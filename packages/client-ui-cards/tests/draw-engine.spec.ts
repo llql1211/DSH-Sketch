@@ -225,7 +225,7 @@ describe('shape rendering', () => {
     const stroke = parts[0]
     expect(stroke?.kind).toBe('stroke')
     if (stroke?.kind !== 'stroke') return
-    expect(stroke.color).toContain('var(--dsw-alias-text-primary')
+    expect(stroke.color).toContain('var(--dsw-alias-label-primary')
   })
 })
 

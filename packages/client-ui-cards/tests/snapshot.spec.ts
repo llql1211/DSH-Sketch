@@ -9,21 +9,21 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { cachedSnapshot, clearSnapshots, resolveCssVariables, snapshotScale, storeSnapshot } from '../src/client/snapshot.ts'
 
 describe('resolveCssVariables', () => {
-  const tokens = new Map([['--dsw-alias-text-primary', '#e6e6e6']])
+  const tokens = new Map([['--dsw-alias-label-primary', '#e6e6e6']])
   const read = (name: string): string => tokens.get(name) ?? ''
 
   it('replaces a declared token with the live value', () => {
-    expect(resolveCssVariables('fill="var(--dsw-alias-text-primary, #1f1f1f)"', read)).toBe('fill="#e6e6e6"')
+    expect(resolveCssVariables('fill="var(--dsw-alias-label-primary, #1f1f1f)"', read)).toBe('fill="#e6e6e6"')
   })
 
   it('keeps a fallback that contains parentheses when the token is undeclared', () => {
-    const markup = '<path style="stroke:var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12))"/>'
+    const markup = '<path style="stroke:var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12))"/>'
     expect(resolveCssVariables(markup, read)).toBe('<path style="stroke:rgba(0, 0, 0, 0.12)"/>')
   })
 
   it('leaves markup without variables untouched and handles several in one string', () => {
     expect(resolveCssVariables('<svg fill="#fff"/>', read)).toBe('<svg fill="#fff"/>')
-    expect(resolveCssVariables('a var(--x, red) b var(--dsw-alias-text-primary, #000) c', read)).toBe('a red b #e6e6e6 c')
+    expect(resolveCssVariables('a var(--x, red) b var(--dsw-alias-label-primary, #000) c', read)).toBe('a red b #e6e6e6 c')
   })
 })
 

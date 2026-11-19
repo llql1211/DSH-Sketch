@@ -37,6 +37,12 @@ export const CLS = {
 
 const SHEET = `
 .${CLS.card} {
+  /* Inherit the host's text stack so card chrome matches DSH prose. The
+     fallbacks mirror DSH's own body font, including its CJK faces, so a
+     missing token still cannot fall back to SimSun (宋体) on Windows. */
+  --sk-font-body: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Helvetica, Arial, sans-serif);
+  --sk-font-mono: var(--ds-font-family-code, "SF Mono", "JetBrains Mono", Consolas, Menlo, Courier, "Microsoft YaHei", monospace);
+  font-family: var(--sk-font-body);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -50,9 +56,9 @@ const SHEET = `
   min-width: 0;
 }
 .${CLS.title} {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: inherit;
   font-size: calc(13px + var(--dsh-content-font-delta, 0px));
-  color: var(--dsw-alias-text-primary, #1f1f1f);
+  color: var(--dsw-alias-label-primary, #1f1f1f);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -62,7 +68,7 @@ const SHEET = `
   padding: 1px 8px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--dsw-alias-bg-base, #fff) 80%, #378add);
-  color: var(--dsw-alias-text-secondary, #5f6368);
+  color: var(--dsw-alias-label-secondary, #5f6368);
   font-size: calc(11px + var(--dsh-content-font-delta, 0px));
 }
 .${CLS.actions} {
@@ -74,10 +80,10 @@ const SHEET = `
 .${CLS.action} {
   flex: none;
   padding: 2px 10px;
-  border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12));
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
   border-radius: 6px;
   background: transparent;
-  color: var(--dsw-alias-text-secondary, #5f6368);
+  color: var(--dsw-alias-label-secondary, #5f6368);
   font-size: calc(12px + var(--dsh-content-font-delta, 0px));
   cursor: pointer;
 }
@@ -87,7 +93,7 @@ const SHEET = `
 .${CLS.canvas} {
   display: block;
   max-width: 100%;
-  border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.08));
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.08));
   border-radius: 8px;
   background: var(--dsw-alias-bg-base, #fff);
   cursor: crosshair;
@@ -102,7 +108,7 @@ const SHEET = `
   flex-direction: column;
   gap: 4px;
   font-size: calc(12px + var(--dsh-content-font-delta, 0px));
-  color: var(--dsw-alias-text-secondary, #5f6368);
+  color: var(--dsw-alias-label-secondary, #5f6368);
 }
 .${CLS.paramsLabel} {
   opacity: 0.75;
@@ -115,7 +121,7 @@ const SHEET = `
 .${CLS.paramName} {
   flex: none;
   width: 1.5em;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--sk-font-mono);
 }
 .${CLS.paramRange} {
   flex: 1 1 auto;
@@ -126,11 +132,11 @@ const SHEET = `
   flex: none;
   width: 5.5em;
   text-align: right;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--sk-font-mono);
 }
 .${CLS.empty} {
   font-size: calc(12px + var(--dsh-content-font-delta, 0px));
-  color: var(--dsw-alias-text-secondary, #5f6368);
+  color: var(--dsw-alias-label-secondary, #5f6368);
 }
 .${CLS.overlay} {
   position: fixed;
@@ -149,7 +155,7 @@ const SHEET = `
   padding: 12px 16px 16px;
   border-radius: 14px;
   background: var(--dsw-alias-bg-base, #fff);
-  border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12));
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
 }
 `

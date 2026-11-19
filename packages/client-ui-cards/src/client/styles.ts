@@ -53,6 +53,12 @@ export const CLS = {
 
 const SHEET = `
 .${CLS.card} {
+  /* Inherit the host's text stack so card chrome matches DSH prose. The
+     fallbacks mirror DSH's own body font, including its CJK faces, so a
+     missing token still cannot fall back to SimSun (宋体) on Windows. */
+  --cd-font-body: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Helvetica, Arial, sans-serif);
+  --cd-font-mono: var(--ds-font-family-code, "SF Mono", "JetBrains Mono", Consolas, Menlo, Courier, "Microsoft YaHei", monospace);
+  font-family: var(--cd-font-body);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -68,7 +74,7 @@ const SHEET = `
 .${CLS.title} {
   font-size: calc(13px + var(--dsh-content-font-delta, 0px));
   font-weight: 600;
-  color: var(--dsw-alias-text-primary, #1f1f1f);
+  color: var(--dsw-alias-label-primary, #1f1f1f);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -78,20 +84,20 @@ const SHEET = `
   padding: 1px 8px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--dsw-alias-bg-base, #fff) 80%, #378add);
-  color: var(--dsw-alias-text-secondary, #5f6368);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--dsw-alias-label-secondary, #5f6368);
+  font-family: inherit;
   font-size: calc(11px + var(--dsh-content-font-delta, 0px));
 }
 .${CLS.summary} {
   margin-left: auto;
   flex: none;
   font-size: calc(11px + var(--dsh-content-font-delta, 0px));
-  color: var(--dsw-alias-text-secondary, #5f6368);
+  color: var(--dsw-alias-label-secondary, #5f6368);
 }
 .${CLS.scroll} {
   max-height: 320px;
   overflow: auto;
-  border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.08));
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.08));
   border-radius: 8px;
   background: var(--dsw-alias-bg-base, #fff);
 }
@@ -108,37 +114,37 @@ const SHEET = `
   text-align: left;
   font-weight: 600;
   white-space: nowrap;
-  color: var(--dsw-alias-text-primary, #1f1f1f);
+  color: var(--dsw-alias-label-primary, #1f1f1f);
   background: color-mix(in srgb, var(--dsw-alias-bg-base, #fff) 94%, #378add);
-  border-bottom: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12));
+  border-bottom: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
 }
 .${CLS.td} {
   padding: 5px 10px;
-  color: var(--dsw-alias-text-secondary, #5f6368);
-  border-bottom: 1px solid color-mix(in srgb, var(--dsw-alias-border-base, rgba(0, 0, 0, 0.08)) 60%, transparent);
+  color: var(--dsw-alias-label-secondary, #5f6368);
+  border-bottom: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.08)) 60%, transparent);
 }
 .${CLS.num} {
   text-align: right;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--cd-font-mono);
   font-variant-numeric: tabular-nums;
 }
 .${CLS.empty} {
   padding: 10px;
   font-size: calc(12px + var(--dsh-content-font-delta, 0px));
-  color: var(--dsw-alias-text-secondary, #5f6368);
+  color: var(--dsw-alias-label-secondary, #5f6368);
 }
 .${CLS.hint} {
   font-size: calc(11px + var(--dsh-content-font-delta, 0px));
-  color: var(--dsw-alias-text-secondary, #5f6368);
+  color: var(--dsw-alias-label-secondary, #5f6368);
 }
 .${CLS.raw} {
   margin: 0;
   padding: 8px 10px;
   max-height: 260px;
   overflow: auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--cd-font-mono);
   font-size: calc(11px + var(--dsh-content-font-delta, 0px));
-  color: var(--dsw-alias-text-secondary, #5f6368);
+  color: var(--dsw-alias-label-secondary, #5f6368);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -147,15 +153,15 @@ const SHEET = `
 }
 .${CLS.edge} {
   fill: none;
-  stroke: var(--dsw-alias-text-secondary, #5f6368);
+  stroke: var(--dsw-alias-label-secondary, #5f6368);
   stroke-width: 1.5;
 }
 .${CLS.edgeHead} {
-  fill: var(--dsw-alias-text-secondary, #5f6368);
+  fill: var(--dsw-alias-label-secondary, #5f6368);
 }
 .${CLS.edgeLabel} {
   font-size: calc(11px + var(--dsh-content-font-delta, 0px));
-  fill: var(--dsw-alias-text-secondary, #5f6368);
+  fill: var(--dsw-alias-label-secondary, #5f6368);
 }
 .${CLS.edgeLabelBackground} {
   fill: var(--dsw-alias-bg-base, #fff);
@@ -167,7 +173,7 @@ const SHEET = `
 }
 .${CLS.processNode} {
   fill: var(--dsw-alias-bg-base, #fff);
-  stroke: var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12));
+  stroke: var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
   stroke-width: 1.5;
 }
 .${CLS.decisionNode} {
@@ -177,12 +183,12 @@ const SHEET = `
 }
 .${CLS.nodeLabel} {
   font-size: calc(12px + var(--dsh-content-font-delta, 0px));
-  fill: var(--dsw-alias-text-primary, #1f1f1f);
+  fill: var(--dsw-alias-label-primary, #1f1f1f);
 }
 .${CLS.drawScroll} {
   max-height: 460px;
   overflow: auto;
-  border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.08));
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.08));
   border-radius: 8px;
   background: var(--dsw-alias-bg-base, #fff);
 }
@@ -208,7 +214,7 @@ const SHEET = `
 .${CLS.figureScroll} {
   max-height: 460px;
   overflow: auto;
-  border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.08));
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.08));
   border-radius: 8px;
   background: #ffffff;
 }
@@ -222,10 +228,10 @@ const SHEET = `
 .${CLS.expand} {
   flex: none;
   padding: 1px 7px;
-  border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12));
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
   border-radius: 6px;
   background: transparent;
-  color: var(--dsw-alias-text-secondary, #5f6368);
+  color: var(--dsw-alias-label-secondary, #5f6368);
   font-size: calc(12px + var(--dsh-content-font-delta, 0px));
   line-height: 1.4;
   cursor: pointer;
@@ -253,7 +259,7 @@ const SHEET = `
   padding: 14px 18px 18px;
   border-radius: 14px;
   background: var(--dsw-alias-bg-base, #fff);
-  border: 1px solid var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12));
+  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
 }
 .${CLS.dialog} .${CLS.scroll},

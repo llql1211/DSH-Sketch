@@ -196,7 +196,7 @@ function PaperDefs({ paper }: { paper: DrawPaper }) {
             cx="11"
             cy="11"
             r="1.1"
-            style={{ fill: 'var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12))', fillOpacity: 0.7 }}
+            style={{ fill: 'var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12))', fillOpacity: 0.7 }}
           />
         </pattern>
       </defs>
@@ -210,7 +210,7 @@ function PaperDefs({ paper }: { paper: DrawPaper }) {
             d="M 22 0 L 0 0 0 22"
             style={{
               fill: 'none',
-              stroke: 'var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12))',
+              stroke: 'var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12))',
               strokeWidth: 1,
               strokeOpacity: 0.55,
             }}
@@ -226,7 +226,7 @@ function PaperDefs({ paper }: { paper: DrawPaper }) {
           d="M 0 13 H 8"
           style={{
             fill: 'none',
-            stroke: 'var(--dsw-alias-border-base, rgba(0, 0, 0, 0.12))',
+            stroke: 'var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12))',
             strokeWidth: 1,
             strokeOpacity: 0.55,
           }}
@@ -244,8 +244,8 @@ function themeSignature(): string {
   if (typeof window === 'undefined') return ''
   const style = window.getComputedStyle(document.documentElement)
   return [
-    style.getPropertyValue('--dsw-alias-text-primary'),
-    style.getPropertyValue('--dsw-alias-border-base'),
+    style.getPropertyValue('--dsw-alias-label-primary'),
+    style.getPropertyValue('--dsw-alias-border-l2'),
     style.colorScheme,
   ].join('|')
 }

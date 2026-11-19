@@ -23,9 +23,9 @@ import { normalizeMode, resolveGeometry } from '@aisketch/sketch-core'
 import type { Mode, SketchSpec } from '@aisketch/sketch-core'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  COLORS,
   Viewport,
   categoryCenterX,
+  chartPaletteFor,
   drawAxes,
   drawCartesianChart,
   drawCurve,
@@ -33,7 +33,8 @@ import {
   drawPoint,
   drawRiemann,
 } from './render.ts'
-import type { ChartType, Sample, Series } from './render.ts'
+import type { ChartPalette, ChartType, Sample, Series } from './render.ts'
+import { readSurfaceColor, useThemeRefresh } from './theme.ts'
 import { NS } from './locales.ts'
 import type { SketchKey } from './locales.ts'
 import { CLS, ensureStyles } from './styles.ts'
@@ -91,16 +92,22 @@ function leadName(spec: SketchSpec): string | undefined {
 }
 
 /** Draw one frame of geometry into a 2D context. */
-function paint(ctx: CanvasRenderingContext2D, spec: SketchSpec, geometry: ReturnType<typeof resolveGeometry>, vp: Viewport): void {
+function paint(
+  ctx: CanvasRenderingContext2D,
+  spec: SketchSpec,
+  geometry: ReturnType<typeof resolveGeometry>,
+  vp: Viewport,
+  palette: ChartPalette,
+): void {
   if (geometry.mode === 'data') {
     const chart = readChartType(spec)
     const series = DATASETS[chart]
     if (chart === 'pie') {
-      drawPieChart(ctx, vp, series)
+      drawPieChart(ctx, vp, series, palette)
     } else {
-      drawCartesianChart(ctx, vp, series, chart)
+      drawCartesianChart(ctx, vp, series, chart, palette)
       // Category captions, which the chart renderer deliberately leaves to the caller.
-      ctx.fillStyle = COLORS.text
+      ctx.fillStyle = palette.text
       ctx.font = '11px system-ui, sans-serif'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
@@ -112,10 +119,10 @@ function paint(ctx: CanvasRenderingContext2D, spec: SketchSpec, geometry: Return
     return
   }
 
-  drawAxes(ctx, vp)
+  drawAxes(ctx, vp, palette)
 
   geometry.curves.forEach((curve, i) => {
-    drawCurve(ctx, vp, toSamples(curve.points), COLORS.curve[i % COLORS.curve.length] ?? COLORS.curve[0])
+    drawCurve(ctx, vp, toSamples(curve.points), palette.curve[i % palette.curve.length] ?? palette.curve[0])
   })
 
   const tangent = geometry.tangent
@@ -130,11 +137,11 @@ function paint(ctx: CanvasRenderingContext2D, spec: SketchSpec, geometry: Return
         [left, tangent.y + tangent.slope * (left - tangent.x)],
         [right, tangent.y + tangent.slope * (right - tangent.x)],
       ],
-      COLORS.tangent,
+      palette.tangent,
       1.5,
       [6, 4],
     )
-    drawPoint(ctx, vp, tangent.x, tangent.y, `f'(x)=${tangent.slope.toFixed(3)}`)
+    drawPoint(ctx, vp, tangent.x, tangent.y, `f'(x)=${tangent.slope.toFixed(3)}`, palette.point)
   }
 
   const riemann = geometry.riemann
@@ -158,14 +165,14 @@ function paint(ctx: CanvasRenderingContext2D, spec: SketchSpec, geometry: Return
         }
         return bestDistance <= width / 200 ? best : Number.NaN
       }
-      drawRiemann(ctx, vp, sampleAt, riemann.a, riemann.b, riemann.n)
+      drawRiemann(ctx, vp, sampleAt, riemann.a, riemann.b, riemann.n, palette)
     }
   }
 
   const taylor = geometry.taylor
   if (taylor !== undefined) {
-    drawCurve(ctx, vp, toSamples(taylor.points), COLORS.curve[2] ?? COLORS.curve[0], 2, [5, 4])
-    drawPoint(ctx, vp, taylor.center, taylor.coefficients[0] ?? 0, undefined, COLORS.point)
+    drawCurve(ctx, vp, toSamples(taylor.points), palette.curve[2] ?? palette.curve[0], 2, [5, 4])
+    drawPoint(ctx, vp, taylor.center, taylor.coefficients[0] ?? 0, undefined, palette.point)
   }
 }
 
@@ -206,6 +213,8 @@ interface SketchPlotProps extends SketchFigureProps {
  */
 function SketchPlot({ spec, t, width, height, onExpand, onClose }: SketchPlotProps) {
   const canvas = useRef<HTMLCanvasElement | null>(null)
+  // A light/dark switch changes no prop here; the hook supplies a repaint trigger.
+  const themeRefresh = useThemeRefresh()
 
   // Interaction state is local by decision: the spec keeps the declared values,
   // so nothing here survives a reload or reaches the session log.
@@ -245,7 +254,7 @@ function SketchPlot({ spec, t, width, height, onExpand, onClose }: SketchPlotPro
     [geometry.xRange, frozenY, width, height],
   )
 
-  // Draw whenever the geometry or the tracer moves.
+  // Draw whenever the geometry, the tracer or the host theme moves.
   useEffect(() => {
     const element = canvas.current
     if (element === null) return
@@ -255,18 +264,21 @@ function SketchPlot({ spec, t, width, height, onExpand, onClose }: SketchPlotPro
     const ctx = element.getContext('2d')
     if (ctx === null) return
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
-    paint(ctx, spec, geometry, viewport)
+    // Read the painted surface, not a theme class, so the ink always matches
+    // the pixels the browser put behind the canvas.
+    const palette = chartPaletteFor(readSurfaceColor(element))
+    paint(ctx, spec, geometry, viewport, palette)
     if (cursor === null || !TRACED_MODES.includes(mode)) return
     const curves: ReadoutCurve[] = geometry.curves.flatMap((curve) => {
       const fn = evaluators.get(curve.expr)
       const index = geometry.curves.indexOf(curve)
-      return fn === undefined ? [] : [{ fn, color: COLORS.curve[index % COLORS.curve.length] ?? COLORS.curve[0] }]
+      return fn === undefined ? [] : [{ fn, color: palette.curve[index % palette.curve.length] ?? palette.curve[0] }]
     })
     const point = pickReadout({ px: cursor.px, py: cursor.py, vp: viewport, curves, values })
     if (point !== null) {
       drawPoint(ctx, viewport, point.x, point.y, `(${formatReadout(point.x)}, ${formatReadout(point.y)})`, point.color)
     }
-  }, [spec, geometry, viewport, cursor, mode, evaluators, values, width, height])
+  }, [spec, geometry, viewport, cursor, mode, evaluators, values, width, height, themeRefresh])
   // The sweep timer advances the lead parameter and writes through the same
   // state the slider reads, so the handle follows the animation.
   useEffect(() => {

@@ -133,7 +133,7 @@ function charAdvance(codePoint: number, size: number): number {
 /**
  * Resolve a paint value to a concrete color.
  *
- * `resolveDrawColor` answers with `var(--dsw-alias-text-primary, …)` for theme
+ * `resolveDrawColor` answers with `var(--dsw-alias-label-primary, …)` for theme
  * ink, which only a styled DOM can resolve. An offscreen raster has no theme, so
  * the token becomes the theme's ink color here.
  * @param color - a validated color, or undefined for theme ink.
