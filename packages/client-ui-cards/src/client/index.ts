@@ -1,103 +1,61 @@
 /**
  * Cards client plugin, browser half.
  *
- * One chat node kind (`card`) carries every card there will ever be, and the
- * node dispatches on the spec's own `kind` through the renderer registry. This
- * plugin contributes four things: the `table` and `flowchart` renderers this
- * release ships, the projection that turns a `show_card` call into a `card`
- * node, that node's view, and the completed-Turn tail that repeats the same
- * cards as artifacts of the answer.
+ * A card now lives in the assistant's own Markdown: a language-keyed fence
+ * layer draws it exactly where the model wrote it, between explanatory
+ * paragraphs. That replaces the old two-face design (a process-row node plus a
+ * turn-tail copy): process rows fold away in every default display mode, and
+ * the duplicate tail put every card at the end of the answer. Fences are part
+ * of the persisted assistant text, so replay redraws the same card with no
+ * Host round trip and no second source of truth.
  *
- * The tail is what makes a card survive the work-details setting: a Tool call
- * belongs to the Turn's process, and a completed Turn folds its process rows
- * away in every mode but `verbose`. Turn tail is the base's artifact channel,
- * exempt from that fold, so a table the answer was built around stays in the
- * answer. A later card type -- in this plugin or in someone else's -- registers
- * a renderer and inherits all four.
- *
- * Both halves of the wire share `@aisketch/cards-core`: the Host admits the spec, the
- * client parses the identical shape back out of the persisted arguments.
+ * All card kinds share one renderer registry: `CardView` dispatches on the
+ * spec's own `kind`, so adding a card type is a registration rather than a new
+ * chat node contract.
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-// Type-only imports: pull the service merges for ctx.locale and ctx.slots.
+// Type-only: pulls the service merge for ctx.locale.
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-// Type-only: pulls the Conversation service, the Chat node slot, and the Turn
-// tail slot, plus the `ChatNodeDataMap` / `ConversationTurnDataMap` keys this
-// package contributes.
-import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only: pulls the SlotRegistry service merge (ctx.slots).
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type {} from '@deepseek-ai/dsh-client-ui-chat/client'
-import { DRAW_KIND, FIGURE_KIND, FLOWCHART_KIND, TABLE_KIND } from '@aisketch/cards-core'
-import { CARD_NODE_KIND, cardDefinition } from './card-definition.ts'
-import { CardNode } from './CardNode.tsx'
-import { CardTail } from './CardTail.tsx'
+import { DRAW_KIND, FIGURE_KIND, FLOWCHART_KIND } from '@aisketch/cards-core'
+import { FenceCard } from './FenceCard.tsx'
 import { DrawCard } from './DrawCard.tsx'
 import { FigureCard } from './FigureCard.tsx'
 import { FlowchartCard } from './FlowchartCard.tsx'
-import { TableCard } from './TableCard.tsx'
 import { registerCardRenderer } from './registry.ts'
-import { cardTurnDefinition } from './turn-cards.ts'
 import { en, NS, zh } from './locales.ts'
 
-/** This implementation's identity in the renderer registry. */
+/** This implementation's identity in the renderer registry and fence slot. */
 export const CARD_RENDERER_ID = '@aisketch/client-ui-cards'
 
-/**
- * Cordis service dependencies of this plugin.
- *
- * This list is **mandatory, not documentation**: Cordis gates every service
- * access on it, so reading `ctx.locale`, `ctx.slots` or `ctx.uiConversation`
- * without the matching entry throws `cannot get property "<name>" without
- * inject`, the plugin body never finishes, and the fiber stays in `loading` --
- * which the shell reports as "Failed to load plugins". The names are Cordis
- * *service* names; `dsh.client.inject` in package.json is a separate,
- * load-order-only list.
- */
-export const inject = ['locale', 'slots', 'uiConversation']
+/** Cordis service dependencies of this plugin. */
+export const inject = ['locale', 'slots']
 
 /**
- * Client plugin body: the dictionaries, the shipped renderer, the projection,
- * the Turn accumulation, the node view, and the artifact tail.
+ * Client plugin body: dictionaries, renderers, and the inline fence layer.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'client-ui-cards: dictionaries')
-  // Registered before the node view can render any node, and idempotent so a
-  // re-applied plugin re-claims `table` without a conflict.
-  ctx.effect(
-    () => registerCardRenderer(TABLE_KIND, { id: CARD_RENDERER_ID, trust: 'native', component: TableCard }),
-    'client-ui-cards: table renderer',
-  )
-  // The second shipped kind: structure in, deterministic layout out. A plugin
-  // adding a third kind claims it the same way, from anywhere.
+  // Registered before the fence can render any card, and idempotent so a
+  // re-applied plugin re-claims its kinds without a conflict.
   ctx.effect(
     () => registerCardRenderer(FLOWCHART_KIND, { id: CARD_RENDERER_ID, trust: 'native', component: FlowchartCard }),
     'client-ui-cards: flowchart renderer',
   )
-  // The third shipped kind: centerlines in, pen character out. Every pen
-  // effect is a pure function of the payload and an element seed, so the same
-  // card replays to identical pixels.
   ctx.effect(
     () => registerCardRenderer(DRAW_KIND, { id: CARD_RENDERER_ID, trust: 'native', component: DrawCard }),
     'client-ui-cards: draw renderer',
   )
-  // The fourth shipped kind: a semantic teaching figure. The geometry is
-  // deterministic and the model never supplies coordinates.
   ctx.effect(
     () => registerCardRenderer(FIGURE_KIND, { id: CARD_RENDERER_ID, trust: 'native', component: FigureCard }),
     'client-ui-cards: figure renderer',
   )
-  ctx.uiConversation.events.register(cardDefinition)
-  ctx.uiConversation.events.register(cardTurnDefinition)
-  ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
-    name: 'conversation.chat.node',
-    key: CARD_NODE_KIND,
-    locale: NS,
-  }, CardNode))
-  ctx.slots.inject('conversation.chat.turnTail', () => ctx.slots.register(
-    { name: 'conversation.chat.turnTail', id: CARD_RENDERER_ID, locale: NS },
-    CardTail,
-  ))
+  // The only public face: a fenced card renders inside the answer's Markdown,
+  // between the text around it, and is never folded as process noise.
+  ctx.slots.inject('conversation.chat.markdown.fence', () => ctx.slots.register({
+    name: 'conversation.chat.markdown.fence', key: 'aisketch', id: CARD_RENDERER_ID,
+  }, FenceCard))
 }

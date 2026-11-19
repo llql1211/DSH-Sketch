@@ -19,3 +19,20 @@ export function readSpec(meta: unknown): SketchSpec | null {
   if (typeof expr !== 'string' || expr.length === 0) return null
   return spec as SketchSpec
 }
+
+/**
+ * Narrow the JSON body of an `aisketch-plot` fence to a drawable spec.
+ * @param code - the fence body as written in the assistant message.
+ * @returns the spec, or null for incomplete or malformed payloads.
+ */
+export function readFenceSpec(code: string): SketchSpec | null {
+  if (code.trim() === '') return null
+  try {
+    const parsed = JSON.parse(code) as unknown
+    if (typeof parsed !== 'object' || parsed === null) return null
+    const expr = (parsed as { expr?: unknown }).expr
+    return typeof expr === 'string' && expr.length > 0 ? parsed as SketchSpec : null
+  } catch {
+    return null
+  }
+}
