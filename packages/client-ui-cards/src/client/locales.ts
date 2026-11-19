@@ -23,6 +23,8 @@ export const zh = {
   'figure.summary.atom': '{symbol} · Z={z}',
   'card.expand': '放大显示',
   'card.close': '关闭',
+  'card.save': '保存',
+  'card.saveHint': '保存为 PNG 图片',
 } satisfies Record<string, string>
 
 /** The cards namespace key union. */
@@ -48,6 +50,8 @@ export const en = {
   'figure.summary.atom': '{symbol} · Z={z}',
   'card.expand': 'Expand',
   'card.close': 'Close',
+  'card.save': 'Save',
+  'card.saveHint': 'Save as PNG image',
 } satisfies Record<CardKey, string>
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

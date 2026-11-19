@@ -46,6 +46,8 @@ export const CLS = {
   drawHand: 'cd-draw-hand',
   figureScroll: 'cd-figure-scroll',
   figureSvg: 'cd-figure-svg',
+  saveBody: 'cd-save-body',
+  save: 'cd-save',
   expand: 'cd-expand',
   overlay: 'cd-overlay',
   dialog: 'cd-dialog',
@@ -225,6 +227,11 @@ const SHEET = `
   max-width: 100%;
   background: #ffffff;
 }
+.${CLS.saveBody} {
+  width: 100%;
+  min-width: 0;
+}
+.${CLS.save},
 .${CLS.expand} {
   flex: none;
   padding: 1px 7px;
@@ -236,6 +243,7 @@ const SHEET = `
   line-height: 1.4;
   cursor: pointer;
 }
+.${CLS.save}:hover,
 .${CLS.expand}:hover {
   background: color-mix(in srgb, var(--dsw-alias-bg-base, #fff) 92%, #378add);
 }

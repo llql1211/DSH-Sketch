@@ -42,6 +42,7 @@ import { compileCurves, freezeWindow, initialValues, stepOf, withValues } from '
 import type { ParamValues } from './params.ts'
 import { formatReadout, pickReadout } from './readout.ts'
 import type { ReadoutCurve } from './readout.ts'
+import { pngFilename, saveCanvasAsPng } from './save-png.ts'
 
 // The browser half is served as one prebuilt bundle with no CSS-modules
 // pipeline, so the sheet is injected once instead of imported.
@@ -340,6 +341,18 @@ function SketchPlot({ spec, t, width, height, onExpand, onClose }: SketchPlotPro
               {playing ? t('card.pause') : t('card.animate')}
             </button>
           )}
+          <button
+            type="button"
+            className={CLS.action}
+            aria-label={t('card.saveHint')}
+            title={t('card.saveHint')}
+            onClick={() => {
+              const element = canvas.current
+              if (element !== null) saveCanvasAsPng(element, pngFilename(spec.expr))
+            }}
+          >
+            ⇩ {t('card.save')}
+          </button>
           {onExpand === undefined ? null : (
             <button
               type="button"
