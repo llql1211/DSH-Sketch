@@ -1,13 +1,14 @@
 {
-  "name": "@aisketch/sketch-bundle",
-  "version": "0.3.0",
-  "description": "AISketch bundle: mounts the sketch_function tool, its browser card, and the generic show_card card channel into a dsh profile",
+  "name": "@llql1211/dsh-sketch",
+  "version": "0.1.0",
+  "description": "DSH-Sketch bundle: mounts the sketch_function tool, its browser card, and the generic show_card card channel into a dsh profile",
   "type": "module",
   "license": "MIT",
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
     "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "dependencies": {
@@ -24,14 +25,14 @@
       "patch": "./cordis.patch.yml"
     }
   },
-  "author": "QinLuza",
+  "author": "llql1211",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/QinLuza/dsh-aisketch.git"
+    "url": "git+https://github.com/llql1211/DSH-Sketch.git"
   },
-  "homepage": "https://github.com/QinLuza/dsh-aisketch#readme",
+  "homepage": "https://github.com/llql1211/DSH-Sketch#readme",
   "bugs": {
-    "url": "https://github.com/QinLuza/dsh-aisketch/issues"
+    "url": "https://github.com/llql1211/DSH-Sketch/issues"
   },
   "keywords": [
     "dsh",
@@ -51,6 +52,7 @@
   },
   "files": [
     "src",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "locale/*.json"
   ]
 }

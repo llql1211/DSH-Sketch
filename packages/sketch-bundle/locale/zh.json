@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DSH-Sketch",
+    "description": "在回答正文的围栏里根据结构化 JSON 渲染流程图、手绘插画、教学示意图与可交互函数图像；表格仍用 Markdown 书写。"
+  }
+}

@@ -1,6 +1,6 @@
 {
   "name": "@aisketch/client-ui-cards",
-  "version": "0.3.0",
+  "version": "0.1.0",
   "description": "Generic in-conversation card renderer: one chat node kind keyed by CardSpec.kind, dispatched through a client-side renderer registry",
   "type": "module",
   "license": "MIT",
@@ -44,14 +44,14 @@
       "platform": "web"
     }
   },
-  "author": "QinLuza",
+  "author": "llql1211",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/QinLuza/dsh-aisketch.git"
+    "url": "git+https://github.com/llql1211/DSH-Sketch.git"
   },
-  "homepage": "https://github.com/QinLuza/dsh-aisketch#readme",
+  "homepage": "https://github.com/llql1211/DSH-Sketch#readme",
   "bugs": {
-    "url": "https://github.com/QinLuza/dsh-aisketch/issues"
+    "url": "https://github.com/llql1211/DSH-Sketch/issues"
   },
   "keywords": [
     "dsh",

@@ -1,10 +1,12 @@
-# dsh-aisketch
+# DSH-Sketch
 
 给 [DSH](https://github.com/deepseek-ai/deepseek-harness)（DeepSeek Harness）加一条「**模型只给结构，客户端负责作图**」的卡片通道。
 
-**English TL;DR** — dsh-aisketch renders graphics from JSON written inline in the assistant's answer. The model supplies structure only; a deterministic engine owns geometry. Tables stay as ordinary Markdown in the prose. MIT, zero base changes.
+> 本项目是 [QinLuza/dsh-aisketch](https://github.com/QinLuza/dsh-aisketch) 的 fork（MIT © QinLuza），由 llql1211 维护。相对上游的改动：表格回归正文 Markdown；`draw` / `figure` 图片按比例居中、不再撑满与纵向滚动；图表可一键保存 PNG；兼容 DSH 0.2.2。
 
-本 fork 的用法（DSH 0.2.2）：
+**English TL;DR** — DSH-Sketch renders graphics from JSON written inline in the assistant's answer. The model supplies structure only; a deterministic engine owns geometry. Tables stay as ordinary Markdown in the prose. MIT, zero base changes.
+
+用法（DSH 0.2.2）：
 
 | 正文围栏 | 内容 | 用户看到什么 |
 |---|---|---|
@@ -15,9 +17,8 @@
 表格直接写成 Markdown，不再交给插件。`show_card` / `sketch_function` 工具保留为私有的规格校验与预览通道，公开图片一律由正文围栏渲染，所以图片正好落在解说文字之间，不会堆在回答末尾，也不会被工作步骤折叠隐藏。画图时可以只写 `{"ref":...}`：工具结果会回显一个 ref，客户端从持久化的 `tool/call` 参数里取回同一份规格，省掉正文里重复的长 JSON；直写完整 spec 的围栏仍然支持。
 
 ![license](https://img.shields.io/badge/license-MIT-blue)
-![CI](https://github.com/QinLuza/dsh-aisketch/actions/workflows/ci.yml/badge.svg)
-![tests](https://img.shields.io/badge/tests-552%20passed-brightgreen)
-![dsh](https://img.shields.io/badge/dsh-0.2.2--rc.3-111)
+![CI](https://github.com/llql1211/DSH-Sketch/actions/workflows/ci.yml/badge.svg)
+![dsh](https://img.shields.io/badge/dsh-0.2.2--rc.5-111)
 
 **零 base 改动**：全部走官方扩展点（`conversation.chat.markdown.fence` 围栏层、tool 注册），没有一行改动 `@deepseek-ai/dsh-*`。
 
@@ -29,7 +30,7 @@
 
 模型想把一件事讲清楚时，手上常常只有文字。于是它写 Markdown 表格、画 ASCII 图，或者更糟——生成一段 HTML/SVG 让你渲染。前两者难看且难读，后者是在执行模型生成的代码，还不可回放。
 
-`dsh-aisketch` 换了一条路：**模型只交结构，几何由确定性引擎算**。
+`DSH-Sketch` 换了一条路：**模型只交结构，几何由确定性引擎算**。
 
 ```jsonc
 // show_card：模型只给节点和连线，位置/换行/箭头锚点由客户端算
@@ -53,26 +54,22 @@
 |---|---|---|
 | 卡片怎么来 | 每个内置工具自己的卡片模型（read / grep / diff / terminal / web / image …），渲染器写死在客户端 | **一条通用通道**：模型自选内容，`kind` 决定用哪个渲染器；加一种卡片 = 注册一个组件 |
 | 交付物 | `present`：把**已有文件**声明为最终交付物，只记路径不搬内容 | 把**结构化内容本身**交付到会话里，不需要先落盘 |
-| 图表/流程图 | 官方工具目录里没有通用绘图、图表、流程图工具 | 表格、流程图、手绘、教学示意图、六种函数图 |
+| 图表/流程图 | 官方工具目录里没有通用绘图、图表、流程图工具 | 流程图、手绘、教学示意图、六种函数图（表格用 Markdown） |
 | 可见性 | 工具调用属于「回合过程」，会被工作步骤展示模式折叠 | 卡片同时挂 `turnTail` 产出物槽位（详见「已知限制」） |
 
 ---
 
 ## 二、现在能画什么
 
-### 1. `show_card` → `table`
+表格直接写成正文 Markdown，不由插件渲染。
 
-`columns` + `rows`，1..12 列、≤500 行；表头吸顶、数字右对齐等宽、`null` 显示 `--`、超宽横向滚动。
-
-![物理量表](docs/assets/screenshots/table-physics.png)
-
-### 2. `show_card` → `flowchart`
+### 1. `show_card` → `flowchart`
 
 1..40 节点、≤80 连线，`shape` ∈ `terminal` / `process` / `decision`。分层布局、分支标签、回边绕右侧 gutter、共享端点自动扇开。点卡片右上角可放大显示。
 
 ![奇偶判断流程图](docs/assets/screenshots/flowchart-parity.png)
 
-### 3. `show_card` → `draw`
+### 2. `show_card` → `draw`
 
 手绘卡：模型只写中心线、形状、文字、胶带或像素网格；钢笔出锋、书法笔角度、荧光笔半透明、铅笔颗粒、手绘抖动全部由引擎算。`show_card(draw)` 只做私有预览：工具结果带图、自检和 `ref`；模型随后在正文写 `{"ref":"..."}` 围栏发布，用户只看到这张公开卡片。`draw` 工具调用本身（无论是否带 `draft`）都不会再渲染成卡片，所以不会重影。
 
@@ -104,7 +101,7 @@
 
 **显示尺寸**：`draw` 与 `figure` 图片保持画布比例、居中显示，宽高分别封顶 760px / 456px，且不会被放大到超过画布原尺寸。这样既不会在框内出现纵向滚动，也不会让一张图撑满会话栏、把正文挤出视野；需要看细节时点卡片右上角 ⤢，放大层会放宽到 1200px / 86vh。
 
-### 4. `show_card` → `figure`
+### 3. `show_card` → `figure`
 
 教学示意图不塞进 `draw`：前者怕错，后者怕平庸。`figure` 只接受模板与语义参数，坐标、角度、锚点、标签位置全部由渲染器构造。
 
@@ -124,7 +121,7 @@
   <img src="docs/assets/screenshots/figure-atom-na.png" width="49%" alt="Na 原子壳层" />
 </p>
 
-### 5. `sketch_function` → 六种模式
+### 4. `sketch_function` → 六种模式
 
 | 模式 | 画什么 |
 |---|---|
@@ -162,13 +159,11 @@
 
 ## 四、安装
 
-### 方式一：link 安装（本 fork 已在 DSH 0.2.2-rc.3 桌面端验证）
+### 方式一：link 安装（已在 DSH 0.2.2-rc.5 桌面端验证）
 
 ```bash
-# 本 fork 的 dev 分支已把依赖与兼容性声明对齐 0.2.2
-git clone https://github.com/QinLuza/dsh-aisketch.git
-cd dsh-aisketch
-git checkout dev
+git clone https://github.com/llql1211/DSH-Sketch.git
+cd DSH-Sketch
 
 # 构建两个浏览器半边（客户端模块系统读 lib/client.js 原样下发）
 pnpm install
@@ -182,7 +177,7 @@ dsh plugin --profile <profile> add link:<repo>/packages/sketch-bundle
 
 ### 方式二：从 Git 仓库安装
 
-在插件面板里填本仓库地址，或使用插件市场支持的 Git 安装语法；包目录是 `packages/sketch-bundle`。本仓库没有发布 npm 包，`@aisketch/*` 只是公开作用域名，不依赖 npm 在线安装。
+在插件面板里填本仓库地址，或使用插件市场支持的 Git 安装语法；安装入口是 `packages/sketch-bundle`（包名 `@llql1211/dsh-sketch`）。本仓库没有发布 npm 包，内部六个 `@aisketch/*` 包只是工作区标识，不依赖 npm 在线安装。
 
 ### 兼容性
 
@@ -192,7 +187,7 @@ dsh plugin --profile <profile> add link:<repo>/packages/sketch-bundle
 { "engines": { "dsh": ">=0.2.2-rc.3 <0.3.0" } }
 ```
 
-本 fork 已在 `0.2.2-rc.3` 桌面端实测：四个插件行 active，`show_card(table)` 与 `sketch_function` 调用成功，539 个测试与类型检查通过。上游 v0.3.0 仍只声明 `>=0.1.7-rc.2 <0.2.0`，在 0.2.x 上会被安装器拒绝；本 fork 的 `dev` 分支修正了这一点。DSH 升级到 0.3 之前请重新核对这个范围。
+本仓库已在 `0.2.2-rc.5` 桌面端实测：四个插件行 active，`show_card` 与 `sketch_function` 调用成功，全套测试与类型检查通过。上游声明 `>=0.1.7-rc.2 <0.2.0`，在 0.2.x 上会被安装器拒绝；本仓库已把范围对齐到 0.2.2。DSH 升级到 0.3 之前请重新核对这个范围。
 
 **改完 Host 半（`cards-core` / `cards-tool` / `sketch-core` / `sketch-tool`）必须重启应用；改完 client 半必须重新构建 `lib/client.js` 并重启。** 运行中重建 client 产物会让整批插件加载失败。
 
@@ -200,17 +195,17 @@ dsh plugin --profile <profile> add link:<repo>/packages/sketch-bundle
 
 ## 五、架构
 
-七个包，全部 `@aisketch/*`，**base 仓一行未改**：
+七个包；安装入口 `@llql1211/dsh-sketch`，内部六个包沿用 `@aisketch/*` 作为工作区标识，**base 仓一行未改**：
 
 | 包 | 职责 |
 |---|---|
-| `packages/cards-core` | 卡片契约内核：版本化 `CardSpec`、限额校验、`table`/`flowchart`/`draw`/`figure` 载荷解析、`draw` 几何引擎与自检。零依赖 |
+| `packages/cards-core` | 卡片契约内核：版本化 `CardSpec`、限额校验、`table`（历史载荷，客户端已不注册渲染器）/`flowchart`/`draw`/`figure` 载荷解析、`draw` 几何引擎与自检。零依赖 |
 | `packages/cards-tool` | Host 工具 `show_card`：schema、拒绝原因、摘要、`draw` 离屏预览与回读 |
 | `packages/client-ui-cards` | 浏览器半边：`card` 聊天节点 + `turnTail` 产出物面；`CardView` 按 `spec.kind` 经 registry 派发 |
 | `packages/sketch-core` | 纯函数内核：自写 Pratt 表达式解析器、参数摘要、几何采样。零依赖 |
 | `packages/sketch-tool` | Host 工具 `sketch_function`：schema、校验、摘要、`presentationMeta` |
 | `packages/client-ui-sketch` | 浏览器半边：`tool.call.toolview` 过程行 + `turnTail` 产出物卡，同一 `SketchFigure` |
-| `packages/sketch-bundle` | 装配包：`dsh.bundle.patch` → `cordis.patch.yml`（4 行 insert） |
+| `packages/sketch-bundle` | 安装入口（`@llql1211/dsh-sketch`）：`dsh.bundle.patch` → `cordis.patch.yml`（4 行 insert），附中英文展示元数据 |
 
 ### 两张脸
 
@@ -225,12 +220,12 @@ dsh plugin --profile <profile> add link:<repo>/packages/sketch-bundle
 
 ## 六、质量与验收
 
-- **539 例**单元/集成测试（cards-core 194 / client-ui-cards 170 / sketch-core 58 / cards-tool 52 / client-ui-sketch 37 / sketch-tool 28），六个包 `tsc --noEmit` 全清。
+- 完整的单元/集成测试覆盖（cards-core / client-ui-cards / sketch-core / cards-tool / client-ui-sketch / sketch-tool），六个包 `tsc --noEmit` 全清。
 - 真机验收不是「没报错」：函数图 canvas 像素回读（曲线/坐标轴非零）；流程图截图读到胶囊起点、菱形判断、是/否分支与汇合箭头；电子排布图逐项核对轨道数、电子数与洪特规则；渐变/模糊读渲染后的 DOM（`linearGradient` 停点、`stroke-dasharray`、`filter`）而不是只看截图。
 - 回归钉：wiring 闸门（少注册一张脸即红）、`turnTail` 发布键必须等于 Definition 的 kind、draw 的 draft/final 过滤、虚线只能落在描边型笔上、渐变角度按 CSS 约定。
 
 ```bash
-pnpm test          # 539 passed
+pnpm test          # 全绿
 pnpm typecheck     # 六个包全清
 pnpm build:client  # 两个 lib/client.js
 ```
@@ -261,4 +256,4 @@ pnpm build:client  # 两个 lib/client.js
 
 ## License
 
-MIT © 2026 QinLuza. 见 [LICENSE](LICENSE)。
+MIT © 2026 QinLuza. 本 fork 由 llql1211 维护，见 [LICENSE](LICENSE)。

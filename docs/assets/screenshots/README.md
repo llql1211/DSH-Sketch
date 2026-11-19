@@ -1,10 +1,9 @@
 # Screenshots
 
-All images in this directory are **card crops rendered by this plugin inside a live DSH session** (dsh `0.1.7-rc.2`), not mockups or design comps.
+All images in this directory are **card crops rendered by this plugin inside a live DSH session** (dsh `0.2.2-rc.5`), not mockups or design comps.
 
 - No account, avatar, workspace path, API key, model provider, or conversation text is included; each image is cropped to the card surface.
 - The content is generic teaching material: `sin(x)`, `x^2`, a physics formula table, a parity flowchart, Zn/Na electron models, and a mountain-lake illustration.
-- Reproduce them with the prompts in [`../showcase-prompts.md`](../showcase-prompts.md).
 
 | File | Capability |
 |---|---|
@@ -14,7 +13,7 @@ All images in this directory are **card crops rendered by this plugin inside a l
 | `sketch-riemann.png` | `sketch_function` · `riemann` |
 | `sketch-taylor.png` | `sketch_function` · `taylor` |
 | `sketch-data.png` | `sketch_function` · `data` (bar) |
-| `table-physics.png` | `show_card` · `table` |
+| `table-physics.png` | 旧版 `show_card` 表格卡截图，仅作素材留存；当前表格用正文 Markdown |
 | `flowchart-parity.png` | `show_card` · `flowchart` (expanded view) |
 | `draw-illustration.png` | `show_card` · `draw` (final, 1200×800) |
 | `draw-dashed-prism.png` | `draw` · `path.dash` on hidden edges + `strokeOpacity` |

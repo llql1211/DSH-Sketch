@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DSH-Sketch",
+    "description": "Renders flowcharts, hand-drawn illustrations, teaching diagrams and interactive function plots from structured JSON written inline in the assistant's answer. Tables stay as ordinary Markdown."
+  }
+}
