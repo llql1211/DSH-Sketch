@@ -155,22 +155,23 @@
 
 ## 四、安装
 
-### 方式一：link 安装（推荐，当前已验证）
+### 方式一：link 安装（本 fork 已在 DSH 0.2.2-rc.3 桌面端验证）
 
 ```bash
+# 本 fork 的 dev 分支已把依赖与兼容性声明对齐 0.2.2
 git clone https://github.com/QinLuza/dsh-aisketch.git
 cd dsh-aisketch
+git checkout dev
 
 # 构建两个浏览器半边（客户端模块系统读 lib/client.js 原样下发）
 pnpm install
 pnpm build:client
 
-# 装进 profile（官方命令，实为 pnpm 包装器）
+# 装进 profile
 dsh plugin --profile <profile> add link:<repo>/packages/sketch-bundle
-dsh --profile <profile> --dump-config    # 应见 4 行 insert
 ```
 
-桌面端（Electron）的 `desktop` profile 被应用独占，CLI 装不进去；请用应用自己的**插件面板**，安装来源填 `packages/sketch-bundle` 的绝对路径。
+桌面端（Electron）的 `desktop` profile 请用应用自己的**插件面板**，安装来源填 `packages/sketch-bundle` 的绝对路径；或通过内置 `plugin_manager` 的 `install_bundle` 安装同一路径。
 
 ### 方式二：从 Git 仓库安装
 
@@ -181,10 +182,10 @@ dsh --profile <profile> --dump-config    # 应见 4 行 insert
 `packages/sketch-bundle/package.json` 已声明：
 
 ```json
-{ "engines": { "dsh": ">=0.1.7-rc.2 <0.2.0" } }
+{ "engines": { "dsh": ">=0.2.2-rc.3 <0.3.0" } }
 ```
 
-当前在 `0.1.7-rc.2` 的桌面端与插件系统上实测。dsh 升级到 0.2 之前，先看这个范围是否仍然匹配；不匹配时安装器会直接拒绝，而不是装作能跑。
+本 fork 已在 `0.2.2-rc.3` 桌面端实测：四个插件行 active，`show_card(table)` 与 `sketch_function` 调用成功，539 个测试与类型检查通过。上游 v0.3.0 仍只声明 `>=0.1.7-rc.2 <0.2.0`，在 0.2.x 上会被安装器拒绝；本 fork 的 `dev` 分支修正了这一点。DSH 升级到 0.3 之前请重新核对这个范围。
 
 **改完 Host 半（`cards-core` / `cards-tool` / `sketch-core` / `sketch-tool`）必须重启应用；改完 client 半必须重新构建 `lib/client.js` 并重启。** 运行中重建 client 产物会让整批插件加载失败。
 

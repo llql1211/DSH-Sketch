@@ -14,8 +14,7 @@
     "@aisketch/sketch-tool": "workspace:*",
     "@aisketch/client-ui-sketch": "workspace:*",
     "@aisketch/cards-tool": "workspace:*",
-    "@aisketch/client-ui-cards": "workspace:*",
-    "@deepseek-ai/cordis": "4.0.4"
+    "@aisketch/client-ui-cards": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^6.0.3"
@@ -48,7 +47,7 @@
     "bundle"
   ],
   "engines": {
-    "dsh": ">=0.1.7-rc.2 <0.2.0"
+    "dsh": ">=0.2.2-rc.3 <0.3.0"
   },
   "files": [
     "src",
