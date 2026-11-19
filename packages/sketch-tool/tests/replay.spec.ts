@@ -15,32 +15,27 @@
 
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import * as NativeExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { resolveGeometry } from '@aisketch/sketch-core'
 import type { SketchSpec } from '@aisketch/sketch-core'
+import { call as makeCall, run } from './compat.ts'
 import * as sketchTool from '../src/index.ts'
-
-const signal = new AbortController().signal
 
 /** Build a context with the services the tool injects, then load the tool. */
 async function setup(): Promise<Context> {
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeExecutor)
   await ctx.plugin(sketchTool)
   return ctx
 }
 
 /** Run one tool call through the real registry. */
 async function call(ctx: Context, args: unknown) {
-  return await ctx.tools.execute({
-    signal,
-    callId: ToolCallId('replay-1'),
-    name: 'sketch_function',
-    arguments: args,
-  })
+  return run(ctx.tools, makeCall('sketch_function', args))
 }
 
 /**
