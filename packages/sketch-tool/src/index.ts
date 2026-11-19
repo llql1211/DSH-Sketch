@@ -274,15 +274,20 @@ export function apply(ctx: Context): void {
   ctx.systemPrompt.section({
     name: 'tool:sketch_function',
     order: ctx.systemPrompt.getSectionOrder('TOOL_WEB_SEARCH'),
-    text: 'Use `sketch_function` whenever the answer involves a function graph, a curve comparison, a '
-      + 'derivative, an area, or a data chart. Pass the expression; do not write HTML, SVG, or a plotting '
-      + 'script yourself — the tool renders a live card in the conversation.',
+    text: 'When the answer involves a function graph, a curve comparison, a derivative, an area, or a '
+      + 'data chart, put a fenced ```aisketch-plot block in your answer containing the JSON spec '
+      + '{"expr":"x^2", ...}. Place the fence right after the sentence it illustrates and continue the '
+      + 'explanation in the next paragraph, so the plot sits between text instead of at the end. do not '
+      + 'write HTML, SVG, or a plotting script yourself — the client renders a live figure from the JSON. '
+      + 'The `sketch_function` tool only validates the spec and returns a short computed summary.',
   })
 
   ctx.tools.register(defineTool({
     name: 'sketch_function',
     description:
-      'Draw a function graph, calculus demo, or data chart as a live card in the conversation. '
+      'Validate a function plot spec and return a short computed summary. The public figure goes in the '
+      + 'FINAL answer as a fenced ```aisketch-plot block containing this exact JSON spec, placed between '
+      + 'the paragraphs it explains. '
       + 'Give an expression in `expr` using x as the variable (sin, cos, tan, exp, log, sqrt, abs, and the '
       + 'constants pi/e are available; implicit multiplication like `2x` or `3sin(x)` works). '
       + 'Any other identifier becomes a tunable parameter — declare its slider bounds in `params` so the '

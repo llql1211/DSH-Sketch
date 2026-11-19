@@ -76,16 +76,15 @@ describe('registration', () => {
   })
 })
 
-describe('showing a table card', () => {
-  it('returns the admitted spec and a factual summary', async () => {
+describe('table cards are no longer accepted', () => {
+  it('refuses a table and points the model to Markdown', async () => {
     const result = await run(ctx.tools, call('show_card', {
       kind: 'table',
       title: '月度收入',
       payload: { columns: ['月份', '收入'], rows: [['1月', 120], ['2月', 130]] },
     }))
-    expect(result.isError).toBeFalsy()
-    expect(result.value).toMatchObject({ card: { kind: 'table', title: '月度收入' } })
-    expect(textOf(result.content)).toBe('Showed a "table" card titled "月度收入": columns 月份, 收入; 2 row(s).')
+    expect(result.isError).toBe(true)
+    expect(textOf(result.content)).toContain('Markdown')
   })
 
   it('stamps the contract version so a renderer can tell specs apart', async () => {
@@ -108,13 +107,13 @@ describe('showing a table card', () => {
     expect(result.value).not.toHaveProperty('card.title')
   })
 
-  it('refuses a row wider than its header, so the model can correct it', async () => {
+  it('refuses a malformed table the same way', async () => {
     const result = await run(ctx.tools, call('show_card', {
       kind: 'table',
       payload: { columns: ['a'], rows: [['x', 'y']] },
     }))
     expect(result.isError).toBe(true)
-    expect(textOf(result.content)).toContain('one per column')
+    expect(textOf(result.content)).toContain('Markdown')
   })
 
   it('refuses a kind that is not an identifier', async () => {

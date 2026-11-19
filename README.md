@@ -2,19 +2,23 @@
 
 给 [DSH](https://github.com/deepseek-ai/deepseek-harness)（DeepSeek Harness）加一条「**模型只给结构，客户端负责作图**」的卡片通道。
 
-**English TL;DR** — dsh-aisketch adds two extension points to DSH: `show_card` (native table / SVG flowchart / hand-drawn draw / semantic teaching figures) and `sketch_function` (six interactive plot modes). The model supplies structure only; a deterministic engine owns geometry. MIT, zero base changes.
+**English TL;DR** — dsh-aisketch renders graphics from JSON written inline in the assistant's answer. The model supplies structure only; a deterministic engine owns geometry. Tables stay as ordinary Markdown in the prose. MIT, zero base changes.
 
-| 工具 | 模型给什么 | 用户看到什么 |
+本 fork 的用法（DSH 0.2.2）：
+
+| 正文围栏 | 内容 | 用户看到什么 |
 |---|---|---|
-| `show_card` | `kind` + 结构化 `payload` | 会话里的原生卡片：表格、SVG 流程图、手绘插画、教学示意图 |
-| `sketch_function` | 一条函数表达式 + 参数范围（实测 4–45 token） | 可交互函数图像：六种模式、参数滑块、追踪读数 |
+| ```aisketch | `{"kind":"flowchart"\|"draw"\|"figure", "payload":{...}}` | 就地渲染的流程图 / 手绘插画 / 教学示意图 |
+| ```aisketch-plot | `{"expr":"x^2", ...}` | 可交互函数图像：六种模式、参数滑块、追踪读数 |
+
+表格直接写成 Markdown，不再交给插件。`show_card` / `sketch_function` 工具保留为私有的规格校验与预览通道，公开图片一律由正文围栏渲染，所以图片正好落在解说文字之间，不会堆在回答末尾，也不会被工作步骤折叠隐藏。
 
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![CI](https://github.com/QinLuza/dsh-aisketch/actions/workflows/ci.yml/badge.svg)
-![tests](https://img.shields.io/badge/tests-539%20passed-brightgreen)
-![dsh](https://img.shields.io/badge/dsh-0.1.7--rc.2-111)
+![tests](https://img.shields.io/badge/tests-543%20passed-brightgreen)
+![dsh](https://img.shields.io/badge/dsh-0.2.2--rc.3-111)
 
-**零 base 改动**：全部走官方扩展点（tool 注册、`tool.call.toolview`、`conversation.chat.node`、`conversation.chat.turnTail`），没有一行改动 `@deepseek-ai/dsh-*`。
+**零 base 改动**：全部走官方扩展点（`conversation.chat.markdown.fence` 围栏层、tool 注册），没有一行改动 `@deepseek-ai/dsh-*`。
 
 ![手绘插画卡](docs/assets/screenshots/draw-illustration.png)
 
