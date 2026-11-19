@@ -11,8 +11,37 @@
  * the drawing can be exercised from a test with a stub context.
  */
 
-/** Palette shared with the design tokens used across dsh surfaces. */
-export const COLORS = {
+/**
+ * Every color a plot paints on its canvas.
+ *
+ * The card, its head and its sliders inherit the host theme through
+ * `--dsw-alias-*` CSS tokens, but a 2D context cannot resolve `var()` — it needs
+ * concrete strings. Keeping the whole plot palette in one object lets the caller
+ * pick a light or a dark set from the live surface and hand it down in one value.
+ */
+export interface ChartPalette {
+  /** Axis lines. */
+  readonly axis: string
+  /** Grid lines; the faintest ink in the palette. */
+  readonly grid: string
+  /** Tick labels and category captions. */
+  readonly text: string
+  /** Series colors, cycled for extra curves; the first is always available. */
+  readonly curve: readonly [string, ...string[]]
+  /** Tangent line. */
+  readonly tangent: string
+  /** Highlighted point and its readout. */
+  readonly point: string
+  /** Riemann bar fill. */
+  readonly rect: string
+  /** Riemann bar edge. */
+  readonly rectEdge: string
+  /** Percentage labels drawn inside pie slices. */
+  readonly pieLabel: string
+}
+
+/** Light-theme palette, kept as the default so every existing caller stays valid. */
+export const COLORS: ChartPalette = {
   axis: '#9aa0a6',
   grid: 'rgba(0,0,0,.07)',
   curve: ['#378ADD', '#1D9E75', '#7F77DD', '#EF9F27', '#D4537E'],
@@ -21,7 +50,87 @@ export const COLORS = {
   rect: 'rgba(55,138,221,.24)',
   rectEdge: '#378ADD',
   text: '#5f6368',
-} as const
+  pieLabel: '#ffffff',
+}
+
+/**
+ * Dark-theme palette.
+ *
+ * The light palette's text and grid are black-based: correct on a white card,
+ * invisible once the host switches the canvas to a dark surface. These values
+ * keep the same light/faint hierarchy with light-based ink. Series colors stay
+ * the same so a curve keeps its identity across a theme switch.
+ */
+export const DARK_COLORS: ChartPalette = {
+  axis: '#7c848f',
+  grid: 'rgba(255,255,255,.09)',
+  curve: COLORS.curve,
+  tangent: '#ff6b6b',
+  point: '#ff6b6b',
+  rect: 'rgba(55,138,221,.28)',
+  rectEdge: '#5b9cf0',
+  text: '#c6ccd4',
+  pieLabel: '#ffffff',
+}
+
+/** Parse a CSS color into RGB channels, or `undefined` when unrecognised. */
+function cssRgb(value: string): { r: number; g: number; b: number; a: number } | undefined {
+  const text = value.trim().toLowerCase()
+  if (text === '' || text === 'transparent') return { r: 255, g: 255, b: 255, a: 0 }
+
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(text)?.[1]
+  if (hex !== undefined) {
+    const digits = hex.length === 3 ? [...hex].map((c) => c + c).join('') : hex
+    return {
+      r: parseInt(digits.slice(0, 2), 16),
+      g: parseInt(digits.slice(2, 4), 16),
+      b: parseInt(digits.slice(4, 6), 16),
+      a: 1,
+    }
+  }
+
+  // getComputedStyle returns `rgb(r, g, b)` / `rgba(r, g, b, a)`; a literal
+  // token may be hex, so both forms are accepted here.
+  const body = /^rgba?\(([^)]+)\)$/.exec(text)?.[1]
+  if (body !== undefined) {
+    const numbers = body.split(/[\s,/]+/).filter((p) => p !== '').map(Number)
+    const [r, g, b] = numbers
+    if (r !== undefined && g !== undefined && b !== undefined && [r, g, b].every(Number.isFinite)) {
+      return { r, g, b, a: numbers[3] ?? 1 }
+    }
+  }
+  return undefined
+}
+
+/**
+ * Whether a painted surface is dark enough to need light ink.
+ *
+ * Luminance is estimated with the perceptual RGB weights. An unresolved or
+ * transparent token is treated as light: that is the CSS fallback the canvas
+ * itself uses, so the palette must agree with what the browser paints.
+ * @param cssColor - a computed color, e.g. `rgb(31, 32, 35)` or `#1f2023`.
+ * @returns true when the surface needs the dark palette.
+ */
+export function isDarkSurface(cssColor: string): boolean {
+  const color = cssRgb(cssColor)
+  if (color === undefined || color.a === 0) return false
+  const luminance = (0.299 * color.r + 0.587 * color.g + 0.114 * color.b) / 255
+  return luminance < 0.5
+}
+
+/**
+ * Pick the plot palette for the surface the canvas is actually painted on.
+ *
+ * The choice is driven by the background color rather than by a text token:
+ * the same rule works for a host theme switch, a per-card override, or a media
+ * query, and it avoids the inverse failure where a light ink token and a dark
+ * canvas disagree and leave the labels invisible.
+ * @param surfaceColor - the canvas's computed background color.
+ * @returns the matching palette.
+ */
+export function chartPaletteFor(surfaceColor: string): ChartPalette {
+  return isDarkSurface(surfaceColor) ? DARK_COLORS : COLORS
+}
 
 /** One math-space point; a null `y` marks a gap the stroke must not cross. */
 export type Sample = readonly [number, number | null]
@@ -102,8 +211,9 @@ function formatTick(value: number, step: number): string {
  * Draw grid lines, axes, and tick labels for the current viewport.
  * @param ctx - 2D context.
  * @param vp - a fitted viewport.
+ * @param palette - ink colors for the surface being painted.
  */
-export function drawAxes(ctx: CanvasRenderingContext2D, vp: Viewport): void {
+export function drawAxes(ctx: CanvasRenderingContext2D, vp: Viewport, palette: ChartPalette = COLORS): void {
   const { width: w, height: h } = vp
   ctx.clearRect(0, 0, w, h)
   ctx.lineWidth = 1
@@ -111,7 +221,7 @@ export function drawAxes(ctx: CanvasRenderingContext2D, vp: Viewport): void {
   const xStep = niceStep((vp.xMax - vp.xMin) / 8)
   const yStep = niceStep((vp.yMax - vp.yMin) / 6)
 
-  ctx.strokeStyle = COLORS.grid
+  ctx.strokeStyle = palette.grid
   ctx.beginPath()
   for (let x = Math.ceil(vp.xMin / xStep) * xStep; x <= vp.xMax; x += xStep) {
     const px = Math.round(vp.px(x)) + 0.5
@@ -128,7 +238,7 @@ export function drawAxes(ctx: CanvasRenderingContext2D, vp: Viewport): void {
   // Axes sit at the origin when visible, otherwise pin to the nearest edge.
   const xAxisY = Math.round(vp.py(Math.min(Math.max(0, vp.yMin), vp.yMax))) + 0.5
   const yAxisX = Math.round(vp.px(Math.min(Math.max(0, vp.xMin), vp.xMax))) + 0.5
-  ctx.strokeStyle = COLORS.axis
+  ctx.strokeStyle = palette.axis
   ctx.beginPath()
   ctx.moveTo(0, xAxisY)
   ctx.lineTo(w, xAxisY)
@@ -136,7 +246,7 @@ export function drawAxes(ctx: CanvasRenderingContext2D, vp: Viewport): void {
   ctx.lineTo(yAxisX, h)
   ctx.stroke()
 
-  ctx.fillStyle = COLORS.text
+  ctx.fillStyle = palette.text
   ctx.font = '11px system-ui, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
@@ -230,6 +340,7 @@ export function drawPoint(
  * @param evaluate - the compiled evaluator, already bound to the current params.
  * @param a,b - integration bounds.
  * @param n - rectangle count.
+ * @param palette - ink colors for the surface being painted.
  */
 export function drawRiemann(
   ctx: CanvasRenderingContext2D,
@@ -238,10 +349,11 @@ export function drawRiemann(
   a: number,
   b: number,
   n: number,
+  palette: ChartPalette = COLORS,
 ): void {
   const step = (b - a) / n
-  ctx.fillStyle = COLORS.rect
-  ctx.strokeStyle = COLORS.rectEdge
+  ctx.fillStyle = palette.rect
+  ctx.strokeStyle = palette.rectEdge
   ctx.lineWidth = 1
   for (let k = 0; k < n; k++) {
     const mid = a + (k + 0.5) * step
@@ -303,12 +415,14 @@ export function categoryCenterX(vp: Viewport, i: number, slots: number): number 
  * @param vp - a fitted viewport.
  * @param series - the named series to draw.
  * @param type - which chart form to use.
+ * @param palette - ink colors for the surface being painted.
  */
 export function drawCartesianChart(
   ctx: CanvasRenderingContext2D,
   vp: Viewport,
   series: readonly Series[],
   type: Exclude<ChartType, 'pie'>,
+  palette: ChartPalette = COLORS,
 ): void {
   const all = series.flatMap((s) => [...s.data])
   const { min, max, step } = niceDataRange(all)
@@ -324,7 +438,7 @@ export function drawCartesianChart(
   const slotWidth = plotW / slots
 
   ctx.clearRect(0, 0, vp.width, vp.height)
-  ctx.strokeStyle = COLORS.grid
+  ctx.strokeStyle = palette.grid
   ctx.lineWidth = 1
   ctx.beginPath()
   for (let v = min; v <= max + 1e-9; v += step) {
@@ -337,7 +451,7 @@ export function drawCartesianChart(
   // Zero baseline, emphasised when the data crosses zero.
   if (min < 0 && max > 0) {
     const y = Math.round(valueToY(0)) + 0.5
-    ctx.strokeStyle = COLORS.axis
+    ctx.strokeStyle = palette.axis
     ctx.beginPath()
     ctx.moveTo(CHART_PAD_LEFT, y)
     ctx.lineTo(vp.width, y)
@@ -345,13 +459,13 @@ export function drawCartesianChart(
   }
 
   // Value axis labels and the axis line itself.
-  ctx.strokeStyle = COLORS.axis
+  ctx.strokeStyle = palette.axis
   ctx.beginPath()
   ctx.moveTo(CHART_PAD_LEFT + 0.5, padTop)
   ctx.lineTo(CHART_PAD_LEFT + 0.5, padTop + plotH)
   ctx.stroke()
 
-  ctx.fillStyle = COLORS.text
+  ctx.fillStyle = palette.text
   ctx.font = '11px system-ui, sans-serif'
   ctx.textAlign = 'right'
   ctx.textBaseline = 'middle'
@@ -363,7 +477,7 @@ export function drawCartesianChart(
     const groupWidth = slotWidth * 0.7
     const barWidth = groupWidth / series.length
     series.forEach((s, si) => {
-      ctx.fillStyle = COLORS.curve[si % COLORS.curve.length] ?? COLORS.curve[0]
+      ctx.fillStyle = palette.curve[si % palette.curve.length] ?? palette.curve[0]
       s.data.forEach((v, i) => {
         const cx = CHART_PAD_LEFT + slotWidth * (i + 0.5)
         const x = cx - groupWidth / 2 + barWidth * si
@@ -376,7 +490,7 @@ export function drawCartesianChart(
   }
 
   series.forEach((s, si) => {
-    const color = COLORS.curve[si % COLORS.curve.length] ?? COLORS.curve[0]
+    const color = palette.curve[si % palette.curve.length] ?? palette.curve[0]
     const pts = s.data.map((v, i): readonly [number, number] => [CHART_PAD_LEFT + slotWidth * (i + 0.5), valueToY(v)])
     if (type === 'line') {
       ctx.strokeStyle = color
@@ -406,8 +520,14 @@ export function drawCartesianChart(
  * @param ctx - 2D context.
  * @param vp - a fitted viewport.
  * @param series - the series whose data becomes the slices.
+ * @param palette - ink colors for the surface being painted.
  */
-export function drawPieChart(ctx: CanvasRenderingContext2D, vp: Viewport, series: readonly Series[]): void {
+export function drawPieChart(
+  ctx: CanvasRenderingContext2D,
+  vp: Viewport,
+  series: readonly Series[],
+  palette: ChartPalette = COLORS,
+): void {
   const first = series[0]
   ctx.clearRect(0, 0, vp.width, vp.height)
   if (first === undefined) return
@@ -422,7 +542,7 @@ export function drawPieChart(ctx: CanvasRenderingContext2D, vp: Viewport, series
 
   values.forEach((v, i) => {
     const slice = (Math.max(0, v) / total) * Math.PI * 2
-    ctx.fillStyle = COLORS.curve[i % COLORS.curve.length] ?? COLORS.curve[0]
+    ctx.fillStyle = palette.curve[i % palette.curve.length] ?? palette.curve[0]
     ctx.beginPath()
     ctx.moveTo(cx, cy)
     ctx.arc(cx, cy, radius, angle, angle + slice)
@@ -434,7 +554,7 @@ export function drawPieChart(ctx: CanvasRenderingContext2D, vp: Viewport, series
       const mid = angle + slice / 2
       const lx = cx + Math.cos(mid) * radius * 0.68
       const ly = cy + Math.sin(mid) * radius * 0.68
-      ctx.fillStyle = '#fff'
+      ctx.fillStyle = palette.pieLabel
       ctx.font = '12px system-ui, sans-serif'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'

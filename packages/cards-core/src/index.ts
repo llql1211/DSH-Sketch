@@ -1231,7 +1231,7 @@ function checkDrawGradient(value: unknown, at: string, field: string): { readonl
  * @returns the CSS paint value.
  */
 export function resolveDrawColor(color: string | undefined): string {
-  if (color === undefined) return 'var(--dsw-alias-text-primary, #1f1f1f)'
+  if (color === undefined) return 'var(--dsw-alias-label-primary, #1f1f1f)'
   const named: string | undefined = (DRAW_COLORS as Record<string, string | undefined>)[color]
   return named ?? color
 }
