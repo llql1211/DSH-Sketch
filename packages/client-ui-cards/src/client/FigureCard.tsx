@@ -11,7 +11,7 @@ import { parseFigurePayload } from '@aisketch/cards-core'
 import { CardFrame } from './CardFrame.tsx'
 import { RawCard } from './RawCard.tsx'
 import type { CardRendererProps } from './registry.ts'
-import { CLS } from './styles.ts'
+import { CLS, artVars } from './styles.ts'
 import {
   FIGURE_FONT_FAMILY,
   FIGURE_HEIGHT,
@@ -133,7 +133,8 @@ function Primitive({ primitive }: { primitive: FigurePrimitive }) {
 function FigureSvg({ layout }: { layout: FigureLayout }) {
   return (
     <svg
-      className={CLS.figureSvg}
+      className={`${CLS.figureSvg} ${CLS.art}`}
+      style={artVars(layout.width, layout.height)}
       width={layout.width}
       height={layout.height}
       viewBox={`0 0 ${layout.width} ${layout.height}`}
@@ -198,7 +199,7 @@ export function FigureCard({ card, t }: CardRendererProps) {
             })}
       t={t}
     >
-      <div className={CLS.figureScroll}>
+      <div className={CLS.figureScroll} data-card-export="">
         <FigureSvg layout={layout} />
       </div>
     </CardFrame>

@@ -222,16 +222,44 @@ function download(canvas: HTMLCanvasElement, filename: string): void {
 }
 
 /**
+ * The single canvas that is a draw card's whole picture, if there is one.
+ *
+ * A draw card's snapshot is already a clean, device-resolution canvas -- the
+ * picture the reader sees. It must not go through {@link markupFor}: embedding
+ * it as a data-URL `<img>` inside a `<foreignObject>` makes Chromium treat the
+ * rasterized SVG as tainted, so the final `toBlob()` throws a SecurityError and
+ * no download is ever started. The card's save handler swallows that error,
+ * which is why clicking Save appeared to do nothing.
+ * @param element - the export seat (the marked picture wrapper, or the body).
+ * @returns the canvas when it is the seat's only picture, else null.
+ */
+export function soleCanvas(element: Element): HTMLCanvasElement | null {
+  const canvases = element.querySelectorAll('canvas')
+  return canvases.length === 1 ? canvases[0] as HTMLCanvasElement : null
+}
+
+/**
  * Export one mounted card body as a downloaded PNG.
  * @param element - the body to photograph.
  * @param filename - the suggested download name.
  */
 export async function saveElementAsPng(element: Element, filename: string): Promise<void> {
-  const rect = element.getBoundingClientRect()
-  const scrollable = element as Element & { scrollWidth?: number; scrollHeight?: number }
+  // Illustration cards centre their picture inside the card body. Photographing
+  // the full-width body would bake those side gutters into the PNG, so export
+  // the picture's own seat when the renderer marks one.
+  const target = element.querySelector<HTMLElement>('[data-card-export]') ?? element
+  // A canvas-backed picture takes the direct route: the canvas is the pixels,
+  // and serializing it through SVG is what taints the export in Chromium.
+  const canvas = soleCanvas(target)
+  if (canvas !== null) {
+    download(canvas, filename)
+    return
+  }
+  const rect = target.getBoundingClientRect()
+  const scrollable = target as Element & { scrollWidth?: number; scrollHeight?: number }
   const width = Math.max(1, Math.ceil(Math.max(rect.width, scrollable.scrollWidth ?? 0)))
   const height = Math.max(1, Math.ceil(Math.max(rect.height, scrollable.scrollHeight ?? 0)))
   const dpr = typeof window === 'undefined' ? 1 : (window.devicePixelRatio || 1)
   const scale = Math.max(1, Math.min(2, dpr, MAX_EXPORT_EDGE / Math.max(width, height)))
-  download(await rasterize(markupFor(element, width, height), width, height, scale), filename)
+  download(await rasterize(markupFor(target, width, height), width, height, scale), filename)
 }

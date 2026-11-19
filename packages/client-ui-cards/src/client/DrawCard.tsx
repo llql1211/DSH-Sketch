@@ -27,7 +27,7 @@ import { CardFrame } from './CardFrame.tsx'
 import { RawCard } from './RawCard.tsx'
 import type { CardRendererProps } from './registry.ts'
 import { cachedSnapshot, snapshotFor, storeSnapshot } from './snapshot.ts'
-import { CLS } from './styles.ts'
+import { CLS, artVars } from './styles.ts'
 
 /**
  * Font stacks are inlined on text elements, not left to a class.
@@ -284,7 +284,12 @@ function useThemeSignature(): string {
 }
 
 /** Copy a cached bitmap into this instance's own canvas. */
-function SnapshotCanvas({ source, label }: { source: HTMLCanvasElement; label: string }) {
+function SnapshotCanvas({ source, label, w, h }: {
+  source: HTMLCanvasElement
+  label: string
+  w: number
+  h: number
+}) {
   const ref = useRef<HTMLCanvasElement | null>(null)
   useEffect(() => {
     const canvas = ref.current
@@ -297,7 +302,8 @@ function SnapshotCanvas({ source, label }: { source: HTMLCanvasElement; label: s
   return (
     <canvas
       ref={ref}
-      className={CLS.drawCanvas}
+      className={`${CLS.drawCanvas} ${CLS.art}`}
+      style={artVars(w, h)}
       width={source.width}
       height={source.height}
       role="img"
@@ -361,14 +367,14 @@ export function DrawCard({ card, t }: CardRendererProps) {
   const artwork = (hidden: boolean) => (
     <svg
       ref={setSvgNode}
-      className={CLS.drawSvg}
+      className={`${CLS.drawSvg} ${CLS.art}`}
       width={draw.size.w}
       height={draw.size.h}
       viewBox={`0 0 ${draw.size.w} ${draw.size.h}`}
       role={hidden ? undefined : 'img'}
       aria-hidden={hidden ? true : undefined}
       aria-label={hidden ? undefined : summary}
-      style={hidden ? { display: 'none' } : undefined}
+      style={hidden ? { display: 'none', ...artVars(draw.size.w, draw.size.h) } : artVars(draw.size.w, draw.size.h)}
     >
       <PaperDefs paper={draw.paper} />
       {draw.background === undefined
@@ -404,15 +410,27 @@ export function DrawCard({ card, t }: CardRendererProps) {
       summary={summary}
       t={t}
     >
-      <div className={CLS.drawScroll}>
+      <div className={CLS.drawScroll} data-card-export="">
         {snapshot !== null
-          ? <SnapshotCanvas source={snapshot} label={summary} />
+          ? <SnapshotCanvas source={snapshot} label={summary} w={draw.size.w} h={draw.size.h} />
           : failed
             ? artwork(false)
             : (
               <>
                 {artwork(true)}
-                <div className={CLS.drawPlaceholder} style={{ aspectRatio: `${draw.size.w} / ${draw.size.h}` }} />
+                {/*
+                 * An empty SVG with the same geometry and classes as the final
+                 * picture reserves the exact seat; a CSS `aspect-ratio` div
+                 * could not account for the height cap and would jump on swap.
+                 */}
+                <svg
+                  className={`${CLS.drawSvg} ${CLS.art}`}
+                  width={draw.size.w}
+                  height={draw.size.h}
+                  viewBox={`0 0 ${draw.size.w} ${draw.size.h}`}
+                  aria-hidden="true"
+                  style={{ visibility: 'hidden', ...artVars(draw.size.w, draw.size.h) }}
+                />
               </>
             )}
       </div>

@@ -1,3 +1,5 @@
+import type { CSSProperties } from 'react'
+
 /**
  * Card styling, carried as a plain stylesheet instead of a CSS module.
  *
@@ -13,6 +15,33 @@
 
 /** The injected `<style>` id, so the sheet is appended exactly once. */
 const STYLE_ID = 'cards-node-styles'
+
+/**
+ * Display caps for self-contained illustrations (draw / figure), in CSS px.
+ *
+ * The host's chat column is 680..920px wide and the card chrome used to give
+ * every picture a full-width, 460px-tall scroll box. A wide-but-not-wide-enough
+ * picture therefore needed an inner scroll, and a full-width picture swallowed
+ * the prose around it. Capping both axes and centring keeps the picture whole
+ * and leaves the surrounding text visible.
+ */
+export const ART_MAX_WIDTH = 760
+export const ART_MAX_HEIGHT = 456
+
+/** Expanded illustrations get the dialog's width and almost its full height. */
+export const ART_DIALOG_MAX_WIDTH = 1200
+export const ART_DIALOG_MAX_HEIGHT_VH = 86
+
+/**
+ * Publish a picture's authored size and ratio to the stylesheet.
+ *
+ * The caps need to know when a picture is smaller than them (never upscale a
+ * doodle) and how tall it becomes once the width is clamped (never scroll a
+ * tall scene). Both are pure functions of the canvas size.
+ */
+export function artVars(w: number, h: number): CSSProperties {
+  return { '--cd-art-w': `${w}px`, '--cd-art-ratio': String(w / h) } as CSSProperties
+}
 
 /** Plain class names, keyed by role. */
 export const CLS = {
@@ -38,10 +67,10 @@ export const CLS = {
   processNode: 'cd-node-process',
   decisionNode: 'cd-node-decision',
   nodeLabel: 'cd-node-label',
+  art: 'cd-art',
   drawScroll: 'cd-draw-scroll',
   drawSvg: 'cd-draw-svg',
   drawCanvas: 'cd-draw-canvas',
-  drawPlaceholder: 'cd-draw-placeholder',
   drawText: 'cd-draw-text',
   drawHand: 'cd-draw-hand',
   figureScroll: 'cd-figure-scroll',
@@ -187,25 +216,33 @@ const SHEET = `
   font-size: calc(12px + var(--dsh-content-font-delta, 0px));
   fill: var(--dsw-alias-label-primary, #1f1f1f);
 }
-.${CLS.drawScroll} {
-  max-height: 460px;
-  overflow: auto;
+/* The seats hug the picture instead of filling the column, so a small sketch
+   is not blown up and a centred illustration leaves the prose visible. */
+.${CLS.drawScroll},
+.${CLS.figureScroll} {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+}
+/*
+ * Keep the authored ratio, but cap both axes. The capH*ratio term is what
+ * replaces the old scroll box: display width =
+ *   min(container, 760px, authored w, 456px * w / h)
+ * so a tall picture shrinks to fit instead of overflowing a fixed-height frame.
+ */
+.${CLS.art} {
+  display: block;
+  width: min(100%, ${ART_MAX_WIDTH}px, var(--cd-art-w, ${ART_MAX_WIDTH}px),
+             calc(${ART_MAX_HEIGHT}px * var(--cd-art-ratio, 1.5)));
+  height: auto;
+  margin: 0 auto;
   border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.08));
   border-radius: 8px;
   background: var(--dsw-alias-bg-base, #fff);
 }
-.${CLS.drawSvg} {
-  display: block;
-  max-width: 100%;
-  height: auto;
-}
+.${CLS.drawSvg},
 .${CLS.drawCanvas} {
   display: block;
-  width: 100%;
-  height: auto;
-}
-.${CLS.drawPlaceholder} {
-  width: 100%;
 }
 .${CLS.drawText} {
   font-family: inherit;
@@ -213,18 +250,7 @@ const SHEET = `
 .${CLS.drawHand} {
   font-family: 'Segoe Script', 'Comic Sans MS', 'KaiTi', '楷体', 'Kaiti SC', 'STKaiti', cursive;
 }
-.${CLS.figureScroll} {
-  max-height: 460px;
-  overflow: auto;
-  border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.08));
-  border-radius: 8px;
-  background: #ffffff;
-}
 .${CLS.figureSvg} {
-  display: block;
-  width: 100%;
-  height: auto;
-  max-width: 100%;
   background: #ffffff;
 }
 .${CLS.saveBody} {
@@ -270,14 +296,17 @@ const SHEET = `
   border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
 }
-.${CLS.dialog} .${CLS.scroll},
-.${CLS.dialog} .${CLS.drawScroll} {
+.${CLS.dialog} .${CLS.scroll} {
   max-height: none;
 }
-.${CLS.dialog} .${CLS.chart},
-.${CLS.dialog} .${CLS.drawSvg} {
+.${CLS.dialog} .${CLS.chart} {
   width: 100%;
   height: auto;
+}
+/* The expanded copy trades the inline caps for the dialog's much larger seat. */
+.${CLS.dialog} .${CLS.art} {
+  width: min(100%, ${ART_DIALOG_MAX_WIDTH}px, var(--cd-art-w, ${ART_DIALOG_MAX_WIDTH}px),
+             calc(${ART_DIALOG_MAX_HEIGHT_VH}vh * var(--cd-art-ratio, 1.5)));
 }
 .${CLS.dialog} .${CLS.table} {
   font-size: calc(14px + var(--dsh-content-font-delta, 0px));

@@ -14,7 +14,7 @@ import { TableCard } from '../src/client/TableCard.tsx'
 import { FlowchartCard } from '../src/client/FlowchartCard.tsx'
 import { FigureCard } from '../src/client/FigureCard.tsx'
 import { DrawCard } from '../src/client/DrawCard.tsx'
-import { pngFilename } from '../src/client/save-png.ts'
+import { pngFilename, soleCanvas } from '../src/client/save-png.ts'
 
 /** The translate stand-in returns the key, so the copy is visible in the markup. */
 const t = ((key: string) => key) as never
@@ -37,6 +37,25 @@ describe('pngFilename', () => {
     const name = pngFilename('图'.repeat(200), 'figure')
     expect(name.endsWith('.png')).toBe(true)
     expect(name.length).toBe(60 + 4)
+  })
+})
+
+describe('soleCanvas', () => {
+  /** Minimal `querySelectorAll` stub: the helper only needs the canvas count. */
+  const seat = (count: number): Element => ({
+    querySelectorAll: (selector: string) => {
+      expect(selector).toBe('canvas')
+      return Array.from({ length: count }, () => ({ tagName: 'CANVAS' }))
+    },
+  }) as unknown as Element
+
+  it('claims a canvas-backed picture so Save can download it directly', () => {
+    expect(soleCanvas(seat(1))).not.toBeNull()
+  })
+
+  it('leaves SVG/DOM-only cards to the serialization route', () => {
+    expect(soleCanvas(seat(0))).toBeNull()
+    expect(soleCanvas(seat(2))).toBeNull()
   })
 })
 
