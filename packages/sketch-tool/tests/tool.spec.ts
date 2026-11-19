@@ -7,13 +7,11 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import type { ToolExecutionInput } from '@deepseek-ai/dsh-tools'
+import * as NativeExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import { call, run } from './compat.ts'
 import * as sketchTool from '../src/index.ts'
-
-const signal = new AbortController().signal
 
 async function setup(): Promise<Context> {
   const ctx = new Context()
@@ -21,12 +19,9 @@ async function setup(): Promise<Context> {
   // its real module shape so `inject` gates activation as it would in a Host.
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeExecutor)
   await ctx.plugin(sketchTool)
   return ctx
-}
-
-function call(name: string, args: unknown): ToolExecutionInput {
-  return { signal, callId: ToolCallId('c1'), name, arguments: args }
 }
 
 /** The rendered text a model would read back. */
@@ -54,24 +49,24 @@ describe('registration', () => {
 
 describe('drawing a curve', () => {
   it('returns the canonical spec and a factual summary', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', { expr: 'x^2' }))
+    const result = await run(ctx.tools, call('sketch_function', { expr: 'x^2' }))
     expect(result.isError).toBeFalsy()
     expect(result.value).toMatchObject({ spec: { expr: 'x^2' } })
     expect(textOf(result.content)).toContain('Drew x^2')
   })
 
   it('omits the mode key for a plain curve, keeping the spec minimal', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', { expr: 'x^2' }))
+    const result = await run(ctx.tools, call('sketch_function', { expr: 'x^2' }))
     expect(result.value).not.toHaveProperty('spec.mode')
   })
 
   it('keeps a non-default mode in the spec', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', { expr: 'sin(x)', mode: 'tangent' }))
+    const result = await run(ctx.tools, call('sketch_function', { expr: 'sin(x)', mode: 'tangent' }))
     expect(result.value).toMatchObject({ spec: { expr: 'sin(x)', mode: 'tangent' } })
   })
 
   it('reports the parameter values it drew with', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', {
+    const result = await run(ctx.tools, call('sketch_function', {
       expr: 'A*sin(w*x)',
       params: { A: [0.2, 2, 1.5], w: [0.5, 4, 2] },
     }))
@@ -83,7 +78,7 @@ describe('drawing a curve', () => {
 
 describe('parameter hygiene', () => {
   it('drops a parameter the expression never uses', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', {
+    const result = await run(ctx.tools, call('sketch_function', {
       expr: 'sin(x)',
       params: { Z: [1, 5, 2] },
     }))
@@ -92,7 +87,7 @@ describe('parameter hygiene', () => {
   })
 
   it('rejects a parameter whose bounds are inverted', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', {
+    const result = await run(ctx.tools, call('sketch_function', {
       expr: 'A*x',
       params: { A: [5, 1, 2] },
     }))
@@ -101,7 +96,7 @@ describe('parameter hygiene', () => {
   })
 
   it('rejects a parameter value outside its own bounds', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', {
+    const result = await run(ctx.tools, call('sketch_function', {
       expr: 'A*x',
       params: { A: [0, 1, 9] },
     }))
@@ -112,7 +107,7 @@ describe('parameter hygiene', () => {
 
 describe('modes', () => {
   it('reports the slope for a tangent', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', {
+    const result = await run(ctx.tools, call('sketch_function', {
       expr: 'cos(x)',
       mode: 'tangent',
       probe: 0,
@@ -131,7 +126,7 @@ describe('modes', () => {
   it('reports a non-trivial slope, proving the derivative is not a zero stub', async () => {
     // cos'(pi/2) = -sin(pi/2) = -1. A stub returning 0 would pass the test
     // above, so this control is what makes that assertion meaningful.
-    const result = await ctx.tools.execute(call('sketch_function', {
+    const result = await run(ctx.tools, call('sketch_function', {
       expr: 'cos(x)',
       mode: 'tangent',
       probe: Math.PI / 2,
@@ -141,7 +136,7 @@ describe('modes', () => {
   })
 
   it('reports both the sum and the exact integral for an area', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', {
+    const result = await run(ctx.tools, call('sketch_function', {
       expr: 'sin(x)',
       mode: 'riemann',
       a: 0,
@@ -155,7 +150,7 @@ describe('modes', () => {
   })
 
   it('lists the Taylor coefficients it expanded with', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', {
+    const result = await run(ctx.tools, call('sketch_function', {
       expr: 'sin(x)',
       mode: 'taylor',
       center: 0,
@@ -168,7 +163,7 @@ describe('modes', () => {
   })
 
   it('accepts comparison curves with labels', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', {
+    const result = await run(ctx.tools, call('sketch_function', {
       expr: 'x^2',
       mode: 'compare',
       curves: ['抛物线, x^2', '直线, 2x'],
@@ -180,7 +175,7 @@ describe('modes', () => {
   })
 
   it('draws a named dataset in data mode', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', {
+    const result = await run(ctx.tools, call('sketch_function', {
       expr: 'chart',
       mode: 'data',
       dataset: 'bar',
@@ -191,13 +186,13 @@ describe('modes', () => {
 
 describe('argument validation', () => {
   it('rejects an empty expression', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', { expr: '   ' }))
+    const result = await run(ctx.tools, call('sketch_function', { expr: '   ' }))
     expect(result.isError).toBe(true)
     expect(textOf(result.content)).toContain('non-empty')
   })
 
   it('rejects an inverted x-window', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', {
+    const result = await run(ctx.tools, call('sketch_function', {
       expr: 'x',
       x_min: 5,
       x_max: 1,
@@ -207,7 +202,7 @@ describe('argument validation', () => {
   })
 
   it('rejects an out-of-range taylor order', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', {
+    const result = await run(ctx.tools, call('sketch_function', {
       expr: 'sin(x)',
       mode: 'taylor',
       order: 99,
@@ -217,7 +212,7 @@ describe('argument validation', () => {
   })
 
   it('rejects an out-of-range rectangle count', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', {
+    const result = await run(ctx.tools, call('sketch_function', {
       expr: 'sin(x)',
       mode: 'riemann',
       n: 5000,
@@ -227,7 +222,7 @@ describe('argument validation', () => {
   })
 
   it('rejects too many comparison curves', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', {
+    const result = await run(ctx.tools, call('sketch_function', {
       expr: 'x',
       mode: 'compare',
       curves: Array.from({ length: 8 }, (_, i) => `x+${i}`),
@@ -237,14 +232,14 @@ describe('argument validation', () => {
   })
 
   it('surfaces a syntax error with its offset so the model can fix it', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', { expr: 'sin(' }))
+    const result = await run(ctx.tools, call('sketch_function', { expr: 'sin(' }))
     expect(result.isError).toBe(true)
     expect(textOf(result.content)).toContain('cannot parse expression')
     expect(textOf(result.content)).toContain('offset')
   })
 
   it('rejects an unknown function by name', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', { expr: 'foo(x)' }))
+    const result = await run(ctx.tools, call('sketch_function', { expr: 'foo(x)' }))
     expect(result.isError).toBe(true)
     expect(textOf(result.content)).toContain('foo')
   })
@@ -252,7 +247,7 @@ describe('argument validation', () => {
 
 describe('result shape', () => {
   it('snapshots a lossless JSON value', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', {
+    const result = await run(ctx.tools, call('sketch_function', {
       expr: 'A*x^2',
       params: { A: [1, 3, 2] },
     }))
@@ -261,7 +256,7 @@ describe('result shape', () => {
   })
 
   it('persists the spec in presentation metadata for replay', async () => {
-    const result = await ctx.tools.execute(call('sketch_function', { expr: 'x^3' }))
+    const result = await run(ctx.tools, call('sketch_function', { expr: 'x^3' }))
     expect(result.meta).toMatchObject({ spec: { expr: 'x^3' } })
   })
 })

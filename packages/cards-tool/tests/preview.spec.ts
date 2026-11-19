@@ -11,13 +11,11 @@
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import type { ToolExecutionInput } from '@deepseek-ai/dsh-tools'
+import * as NativeExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import { call as makeCall, run } from './compat.ts'
 import * as cardsTool from '../src/index.ts'
-
-const signal = new AbortController().signal
 
 /** One admissible sketch: a filled sky band plus a triangle and a caption. */
 const sketch = {
@@ -80,8 +78,13 @@ function textOf(content: readonly { type: string; text?: string }[]): string {
   return content.map(block => block.text ?? '').join('\n')
 }
 
-function call(args: unknown): ToolExecutionInput {
-  return { signal, callId: ToolCallId('c1'), name: 'show_card', arguments: args, agent: fakeAgent as never }
+function call(args: unknown) {
+  return makeCall('show_card', args)
+}
+
+/** Execute one call with the synthetic agent that carries the model route. */
+async function execute(tools: unknown, input: ReturnType<typeof call>) {
+  return run(tools, input, fakeAgent)
 }
 
 /**
@@ -101,6 +104,7 @@ beforeEach(async () => {
   ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeExecutor)
   const { stub, saved } = recorder()
   savedImages = saved
   ctx.provide('attachments', stub)
@@ -110,7 +114,7 @@ beforeEach(async () => {
 
 describe('a drawing comes back to its author', () => {
   it('returns an image block beside the summary', async () => {
-    const result = await ctx.tools.execute(call({ kind: 'draw', title: '山湖', payload: sketch }))
+    const result = await execute(ctx.tools, call({ kind: 'draw', title: '山湖', payload: sketch }))
     expect(result.isError).toBeFalsy()
     const images = imagesOf(result.content)
     expect(images).toHaveLength(1)
@@ -118,7 +122,7 @@ describe('a drawing comes back to its author', () => {
   })
 
   it('commits the exact bytes the preview describes', async () => {
-    const result = await ctx.tools.execute(call({ kind: 'draw', payload: sketch }))
+    const result = await execute(ctx.tools, call({ kind: 'draw', payload: sketch }))
     expect(savedImages).toHaveLength(1)
     const png = savedImages[0]!
     expect([...png.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47])
@@ -131,7 +135,7 @@ describe('a drawing comes back to its author', () => {
   })
 
   it('reports the machine self-check in the same text block', async () => {
-    const result = await ctx.tools.execute(call({ kind: 'draw', payload: sketch }))
+    const result = await execute(ctx.tools, call({ kind: 'draw', payload: sketch }))
     const text = textOf(result.content)
     expect(text).toContain('Showed a "draw" card')
     expect(text).toContain('<self-check>')
@@ -141,14 +145,14 @@ describe('a drawing comes back to its author', () => {
   })
 
   it('leaves art direction to the prompt instead of appending a house-style note', async () => {
-    const result = await ctx.tools.execute(call({ kind: 'draw', payload: sketch }))
+    const result = await execute(ctx.tools, call({ kind: 'draw', payload: sketch }))
     const text = textOf(result.content)
     expect(text).not.toContain('full-width bands')
     expect(text).not.toContain('field-notebook')
   })
 
   it('labels a draft as private while still returning its preview', async () => {
-    const result = await ctx.tools.execute(call({ kind: 'draw', payload: sketch, draft: true }))
+    const result = await execute(ctx.tools, call({ kind: 'draw', payload: sketch, draft: true }))
     expect(imagesOf(result.content)).toHaveLength(1)
     expect(textOf(result.content)).toContain('private draft')
   })
@@ -161,19 +165,19 @@ describe('a drawing comes back to its author', () => {
         { type: 'shape', shape: 'rect', x: 400, y: 300, w: 40, h: 40, color: 'red', width: 2 },
       ],
     }
-    const result = await ctx.tools.execute(call({ kind: 'draw', payload: faraway }))
+    const result = await execute(ctx.tools, call({ kind: 'draw', payload: faraway }))
     expect(textOf(result.content)).toContain('draw nothing on the canvas')
   })
 
   it('skips the picture when preview is false', async () => {
-    const result = await ctx.tools.execute(call({ kind: 'draw', payload: sketch, preview: false }))
+    const result = await execute(ctx.tools, call({ kind: 'draw', payload: sketch, preview: false }))
     expect(imagesOf(result.content)).toHaveLength(0)
     expect(savedImages).toHaveLength(0)
     expect(textOf(result.content)).toContain('<self-check>')
   })
 
   it('leaves a table card exactly as it was', async () => {
-    const result = await ctx.tools.execute(call({
+    const result = await execute(ctx.tools, call({
       kind: 'table',
       payload: { columns: ['a'], rows: [['x']] },
     }))
@@ -188,9 +192,10 @@ describe('degrading without a camera', () => {
     const bare = new Context()
     await bare.plugin(SystemPrompt)
     await bare.plugin(ToolRuntime)
+    await bare.plugin(NativeExecutor)
     bare.provide('llm', { resolveModelInfo: async () => ({ inputModalities: ['text', 'image'] }) })
     await bare.plugin(cardsTool)
-    const result = await bare.tools.execute(call({ kind: 'draw', payload: sketch }))
+    const result = await execute(bare.tools, call({ kind: 'draw', payload: sketch }))
     expect(result.isError).toBeFalsy()
     expect(imagesOf(result.content)).toHaveLength(0)
     expect(textOf(result.content)).toContain('preview skipped')
@@ -201,11 +206,12 @@ describe('degrading without a camera', () => {
     const textOnly = new Context()
     await textOnly.plugin(SystemPrompt)
     await textOnly.plugin(ToolRuntime)
+    await textOnly.plugin(NativeExecutor)
     const { stub, saved } = recorder()
     textOnly.provide('attachments', stub)
     textOnly.provide('llm', { resolveModelInfo: async () => ({ inputModalities: ['text'] }) })
     await textOnly.plugin(cardsTool)
-    const result = await textOnly.tools.execute(call({ kind: 'draw', payload: sketch }))
+    const result = await execute(textOnly.tools, call({ kind: 'draw', payload: sketch }))
     expect(imagesOf(result.content)).toHaveLength(0)
     expect(saved).toHaveLength(0)
     expect(textOf(result.content)).toContain('does not declare image input')

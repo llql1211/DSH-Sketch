@@ -13,13 +13,11 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import type { ToolExecutionInput } from '@deepseek-ai/dsh-tools'
+import * as NativeExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import { call, run } from './compat.ts'
 import * as cardsTool from '../src/index.ts'
-
-const signal = new AbortController().signal
 
 /** One admissible call, reused wherever a presenter needs valid arguments. */
 const validArgs = { kind: 'table', title: '月度收入', payload: { columns: ['月份'], rows: [['1月']] } }
@@ -35,10 +33,6 @@ interface CapturedTool {
   readonly output: {
     readonly presentationMeta: (args: unknown, value: { card: unknown; summary: string }) => Record<string, unknown>
   }
-}
-
-function call(name: string, args: unknown): ToolExecutionInput {
-  return { signal, callId: ToolCallId('c1'), name, arguments: args }
 }
 
 /** The rendered text a model would read back. */
@@ -62,6 +56,7 @@ beforeEach(async () => {
   ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeExecutor)
   await ctx.plugin(cardsTool)
 })
 
@@ -83,7 +78,7 @@ describe('registration', () => {
 
 describe('showing a table card', () => {
   it('returns the admitted spec and a factual summary', async () => {
-    const result = await ctx.tools.execute(call('show_card', {
+    const result = await run(ctx.tools, call('show_card', {
       kind: 'table',
       title: '月度收入',
       payload: { columns: ['月份', '收入'], rows: [['1月', 120], ['2月', 130]] },
@@ -94,12 +89,12 @@ describe('showing a table card', () => {
   })
 
   it('stamps the contract version so a renderer can tell specs apart', async () => {
-    const result = await ctx.tools.execute(call('show_card', { kind: 'note', payload: {} }))
+    const result = await run(ctx.tools, call('show_card', { kind: 'note', payload: {} }))
     expect(result.value).toMatchObject({ card: { version: 1 } })
   })
 
   it('keeps an unknown kind verbatim, so a newer renderer can still claim it', async () => {
-    const result = await ctx.tools.execute(call('show_card', {
+    const result = await run(ctx.tools, call('show_card', {
       kind: 'school.timetable',
       payload: { slots: [{ day: 1, subject: '数学' }] },
     }))
@@ -109,12 +104,12 @@ describe('showing a table card', () => {
   })
 
   it('omits a blank title instead of storing an empty one', async () => {
-    const result = await ctx.tools.execute(call('show_card', { kind: 'note', title: '   ', payload: {} }))
+    const result = await run(ctx.tools, call('show_card', { kind: 'note', title: '   ', payload: {} }))
     expect(result.value).not.toHaveProperty('card.title')
   })
 
   it('refuses a row wider than its header, so the model can correct it', async () => {
-    const result = await ctx.tools.execute(call('show_card', {
+    const result = await run(ctx.tools, call('show_card', {
       kind: 'table',
       payload: { columns: ['a'], rows: [['x', 'y']] },
     }))
@@ -123,7 +118,7 @@ describe('showing a table card', () => {
   })
 
   it('refuses a kind that is not an identifier', async () => {
-    const result = await ctx.tools.execute(call('show_card', { kind: '../escape', payload: {} }))
+    const result = await run(ctx.tools, call('show_card', { kind: '../escape', payload: {} }))
     expect(result.isError).toBe(true)
   })
 })
@@ -145,14 +140,14 @@ describe('showing a flowchart card', () => {
   }
 
   it('returns the admitted diagram and a factual summary', async () => {
-    const result = await ctx.tools.execute(call('show_card', { kind: 'flowchart', title: 'if~else', payload: ifElse }))
+    const result = await run(ctx.tools, call('show_card', { kind: 'flowchart', title: 'if~else', payload: ifElse }))
     expect(result.isError).toBeFalsy()
     expect(result.value).toMatchObject({ card: { kind: 'flowchart', title: 'if~else' } })
     expect(textOf(result.content)).toBe('Showed a "flowchart" card titled "if~else": 4 node(s), 3 connection(s).')
   })
 
   it('refuses a connection to a node that was never declared, so the model can correct it', async () => {
-    const result = await ctx.tools.execute(call('show_card', {
+    const result = await run(ctx.tools, call('show_card', {
       kind: 'flowchart',
       payload: { nodes: [{ id: 'a', label: 'A' }], edges: [{ from: 'a', to: 'ghost' }] },
     }))
@@ -191,7 +186,7 @@ describe('drawing a finished picture', () => {
   }
 
   it('returns a structural self-check without prescribing field-note labels', async () => {
-    const result = await ctx.tools.execute(call('show_card', sketch))
+    const result = await run(ctx.tools, call('show_card', sketch))
     expect(result.isError).toBeFalsy()
     expect(result.value).toMatchObject({ card: { kind: 'draw', title: '山坡' } })
     const check = String((result.value as { selfCheck?: unknown }).selfCheck ?? '')
@@ -201,7 +196,7 @@ describe('drawing a finished picture', () => {
   })
 
   it('marks a draft as private in the self-check', async () => {
-    const result = await ctx.tools.execute(call('show_card', { ...sketch, draft: true }))
+    const result = await run(ctx.tools, call('show_card', { ...sketch, draft: true }))
     expect(result.isError).toBeFalsy()
     expect(result.value).toMatchObject({ card: { kind: 'draw' } })
     expect(String((result.value as { selfCheck?: unknown }).selfCheck ?? '')).toContain('private draft')
@@ -216,7 +211,7 @@ describe('drawing a finished picture', () => {
 
 describe('showing a teaching figure', () => {
   it('admits an incline figure and summarizes its semantics', async () => {
-    const result = await ctx.tools.execute(call('show_card', {
+    const result = await run(ctx.tools, call('show_card', {
       kind: 'figure',
       title: '斜面受力',
       payload: { template: 'incline_force', params: { angleDeg: 30, massKg: 2, frictionCoeff: 0.5 } },
@@ -229,7 +224,7 @@ describe('showing a teaching figure', () => {
   })
 
   it('admits a connected table-pulley figure with semantic forces', async () => {
-    const result = await ctx.tools.execute(call('show_card', {
+    const result = await run(ctx.tools, call('show_card', {
       kind: 'figure',
       payload: { template: 'connected_bodies', params: { surfaceMassKg: 2, hangingMassKg: 1.5, frictionCoeff: 0.3 } },
     }))
@@ -240,7 +235,7 @@ describe('showing a teaching figure', () => {
   })
 
   it('admits an orbital diagram whose configuration is derived from the element', async () => {
-    const result = await ctx.tools.execute(call('show_card', {
+    const result = await run(ctx.tools, call('show_card', {
       kind: 'figure',
       payload: { template: 'orbital_diagram', params: { symbol: 'Zn' } },
     }))
@@ -250,7 +245,7 @@ describe('showing a teaching figure', () => {
   })
 
   it('admits an atom figure whose electrons are derived from the element', async () => {
-    const result = await ctx.tools.execute(call('show_card', {
+    const result = await run(ctx.tools, call('show_card', {
       kind: 'figure',
       payload: { template: 'atom_shell', params: { symbol: 'Na' } },
     }))
@@ -260,7 +255,7 @@ describe('showing a teaching figure', () => {
   })
 
   it('refuses a physically unreadable angle so the model can correct it', async () => {
-    const result = await ctx.tools.execute(call('show_card', {
+    const result = await run(ctx.tools, call('show_card', {
       kind: 'figure',
       payload: { template: 'incline_force', params: { angleDeg: 90, massKg: 2, frictionCoeff: 0.5 } },
     }))
