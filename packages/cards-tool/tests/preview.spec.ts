@@ -144,6 +144,15 @@ describe('a drawing comes back to its author', () => {
     expect(text).not.toContain('add 1-3')
   })
 
+  it('tells the model that preview text boxes are placeholders, next to the picture', async () => {
+    const result = await execute(ctx.tools, call({ kind: 'draw', payload: sketch }))
+    const text = textOf(result.content)
+    expect(imagesOf(result.content)).toHaveLength(1)
+    expect(text).toContain('gray per-character boxes')
+    expect(text).toContain('real glyphs')
+    expect(text).toContain('do not rewrite or trace CJK text')
+  })
+
   it('leaves art direction to the prompt instead of appending a house-style note', async () => {
     const result = await execute(ctx.tools, call({ kind: 'draw', payload: sketch }))
     const text = textOf(result.content)
@@ -174,6 +183,7 @@ describe('a drawing comes back to its author', () => {
     expect(imagesOf(result.content)).toHaveLength(0)
     expect(savedImages).toHaveLength(0)
     expect(textOf(result.content)).toContain('<self-check>')
+    expect(textOf(result.content)).not.toContain('real glyphs')
   })
 
   it('refuses a table instead of attaching a picture to it', async () => {

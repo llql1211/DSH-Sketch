@@ -79,7 +79,11 @@ const DRAW_STYLE_GUIDANCE =
   + 'fault, call it again with the corrected spec. Then publish the drawing exactly once in an ```aisketch '
   + 'fence whose body is {"ref":"<the ref from the last show_card result>"} -- the client reuses that call '
   + 'spec, so do not repeat the JSON. A draft alone is never delivered live; only the fenced card is public. '
-  + 'Never paste the self-check or an element list into the reply.'
+  + 'Never paste the self-check or an element list into the reply.\n'
+  + '- In the preview image every character appears as a gray width box: the Host rasterizer is font-free, and '
+  + 'this happens to English and Chinese alike. The boxes are footprints for checking placement only; the '
+  + 'published card renders real glyphs with the system font. Do not translate, transliterate, or trace the '
+  + 'text as paths because of the boxes.'
 
 /**
  * The compact semantic schemas for the two teaching-figure templates.
@@ -241,8 +245,10 @@ export function apply(ctx: Context): void {
       + '(draft:true): you get a rendered preview plus a machine self-check, but no card is shown. '
       + 'The result carries a ref handle. The public picture goes in the FINAL answer as a fenced ```aisketch '
       + 'block whose body is {"ref":"<ref>"}, which reuses this call spec without repeating the JSON; writing '
-      + 'the full spec inline in that fence is also accepted. Place it between the paragraphs it explains. Do '
-      + 'not publish intermediate revisions.',
+      + 'the full spec inline in that fence is also accepted. Place it between the paragraphs it explains. '
+      + 'In the preview every character is drawn as a gray width box (font-free raster) for English and Chinese '
+      + 'alike; the published card renders real glyphs, so do not rewrite or trace the text because of the '
+      + 'boxes. Do not publish intermediate revisions.',
     parameters: {
       kind: {
         type: 'string',
@@ -333,8 +339,10 @@ export function apply(ctx: Context): void {
           }
           if (rawArgs.preview !== false && !exec.signal.aborted) {
             const outcome = await buildDrawPreview(ctx, draw, routeOf(exec), exec.signal)
-            if (outcome.ok) preview = outcome.preview.attachment
-            else selfCheck = `${selfCheck}\n- preview skipped: ${outcome.skipped}`
+            if (outcome.ok) {
+              preview = outcome.preview.attachment
+              selfCheck = `${selfCheck}\n- preview text is drawn as gray per-character boxes (font-free raster); the published card renders real glyphs, so do not rewrite or trace CJK text because of the boxes.`
+            } else selfCheck = `${selfCheck}\n- preview skipped: ${outcome.skipped}`
           }
         }
       }
