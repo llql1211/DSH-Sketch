@@ -275,8 +275,9 @@ export function apply(ctx: Context): void {
     name: 'tool:sketch_function',
     order: ctx.systemPrompt.getSectionOrder('TOOL_WEB_SEARCH'),
     text: 'When the answer involves a function graph, a curve comparison, a derivative, an area, or a '
-      + 'data chart, put a fenced ```aisketch-plot block in your answer containing the JSON spec '
-      + '{"expr":"x^2", ...}. Place the fence right after the sentence it illustrates and continue the '
+      + 'data chart, put a fenced block tagged aisketch-plot on the opening line (```aisketch-plot) in '
+      + 'your answer, containing the JSON spec {"expr":"x^2", ...}. Place the fence right after the '
+      + 'sentence it illustrates and continue the '
       + 'explanation in the next paragraph, so the plot sits between text instead of at the end. do not '
       + 'write HTML, SVG, or a plotting script yourself — the client renders a live figure from the JSON. '
       + 'The `sketch_function` tool only validates the spec and returns a short computed summary.',

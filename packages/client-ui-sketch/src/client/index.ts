@@ -33,7 +33,9 @@ export const inject = ['locale', 'slots']
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'client-ui-sketch: dictionaries')
+  // Wildcard so a bare ``` fence with a plot spec is drawn too; other fences
+  // keep their code block.
   ctx.slots.inject('conversation.chat.markdown.fence', () => ctx.slots.register({
-    name: 'conversation.chat.markdown.fence', key: 'aisketch-plot', id: '@aisketch/client-ui-sketch',
+    name: 'conversation.chat.markdown.fence', id: '@aisketch/client-ui-sketch', locale: NS,
   }, FencePlot))
 }

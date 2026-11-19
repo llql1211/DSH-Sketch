@@ -200,7 +200,8 @@ export function apply(ctx: Context): void {
     order: ctx.systemPrompt.getSectionOrder('TOOL_WEB_SEARCH'),
     text: 'Tables belong in the answer as ordinary Markdown, not in a card. Graphics belong in a fence '
       + 'inside the answer, so the picture sits between the paragraphs that explain it. Write a fenced '
-      + '```aisketch block containing a JSON card spec { "kind": ..., "title"?: ..., "payload": ... } for '
+      + 'block with the language tag aisketch on the opening line (```aisketch) containing a JSON card '
+      + 'spec { "kind": ..., "title"?: ..., "payload": ... } for '
       + 'a flowchart, a hand-drawn illustration, or a teaching figure. Supported kinds: "flowchart", '
       + '"draw", "figure". never write HTML, SVG, or a plotting script yourself: the client renders the '
       + 'card natively from the JSON. For a function graph use a fenced ```aisketch-plot block containing '

@@ -35,6 +35,14 @@ describe('an aisketch fence', () => {
     expect(render('{"kind":"note","payload":{}}')).toContain('data-kind="note"')
   })
 
+  it('never publishes a private draft', () => {
+    expect(render('{"kind":"note","payload":{},"draft":true}')).toContain('<pre>')
+  })
+
+  it('leaves an unrelated JSON fence as code', () => {
+    expect(render('{"hello":"world"}')).toContain('<pre>')
+  })
+
   it('keeps the raw code while the message streams', () => {
     expect(render('{"kind":"note"', true)).toContain('<pre>')
   })

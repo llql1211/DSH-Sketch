@@ -53,9 +53,10 @@ export function apply(ctx: ClientContext): void {
     () => registerCardRenderer(FIGURE_KIND, { id: CARD_RENDERER_ID, trust: 'native', component: FigureCard }),
     'client-ui-cards: figure renderer',
   )
-  // The only public face: a fenced card renders inside the answer's Markdown,
-  // between the text around it, and is never folded as process noise.
+  // The only public face: a wildcard fence layer renders any JSON card spec in
+  // place, so a bare ``` fence or ```json still draws. Non-card fences pass
+  // through as their inner code block.
   ctx.slots.inject('conversation.chat.markdown.fence', () => ctx.slots.register({
-    name: 'conversation.chat.markdown.fence', key: 'aisketch', id: CARD_RENDERER_ID,
+    name: 'conversation.chat.markdown.fence', id: CARD_RENDERER_ID, locale: NS,
   }, FenceCard))
 }

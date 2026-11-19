@@ -54,8 +54,11 @@ function wire(): Wiring {
         run()
         return () => {}
       },
-      register: (options: { readonly name: string; readonly key?: string; readonly id?: string }) => {
+      register: (options: { readonly name: string; readonly key?: string; readonly id?: string; readonly locale?: string }) => {
         registeredSlots.push(`${options.name}/${options.key ?? options.id ?? '?'}`)
+        // A component that reads `t` without a locale seat throws, and the
+        // fence slot silently falls back to the raw code block.
+        expect(options.locale).toBe('cards')
         return () => {}
       },
     },
@@ -65,9 +68,9 @@ function wire(): Wiring {
 }
 
 describe('the inline fence is the only public face', () => {
-  it('registers the aisketch fence layer', () => {
+  it('registers a wildcard fence layer so bare JSON fences still draw', () => {
     const wiring = wire()
-    expect(wiring.registeredSlots).toContain(`conversation.chat.markdown.fence/aisketch`)
+    expect(wiring.registeredSlots).toContain(`conversation.chat.markdown.fence/${CARD_RENDERER_ID}`)
     expect(wiring.injectedSlots).toEqual(['conversation.chat.markdown.fence'])
   })
 
