@@ -7,14 +7,18 @@
  * the card; every other fence renders its inner code block untouched, so math,
  * diff and ordinary code fences keep working.
  *
- * The fence body is part of the persisted assistant message, so replay redraws
- * the identical card with no Host round trip and no second source of truth.
+ * A fence body may also be {"ref":"..."}, the handle echoed by `show_card`.
+ * The spec then comes from the persisted call arguments instead of a second copy
+ * in the answer, so a long drawing is authored once. Inline specs keep working
+ * and remain the replay-safe choice when the tool call may leave the loaded
+ * window.
  */
-import { useMemo } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import type { HocShare, PropsLocale, PropsRuntime, SlotMap } from '@deepseek-ai/dsh-client-ui-slots'
 import { parseCardSpec } from '@aisketch/cards-core'
 import type { CardSpec } from '@aisketch/cards-core'
+import { cardByRef, cardRefsVersion, subscribeCardRefs } from './card-refs.ts'
 import { CardView } from './CardView.tsx'
 import type { NS } from './locales.ts'
 
@@ -25,7 +29,8 @@ export type FenceCardProps =
   & PropsLocale<typeof NS>
 
 /**
- * Narrow a fence body to a public card spec.
+ * Narrow a fence body to a public card spec, resolving a tool-call ref when
+ * the model chose the compact form.
  * @param code - the fence body as written in the assistant message.
  * @returns the spec, or null when this fence is not a card for the user.
  */
@@ -36,6 +41,11 @@ export function readFenceCard(code: string): CardSpec | null {
     if (typeof parsed !== 'object' || parsed === null) return null
     // A private draft is for the model's own inspection; never publish it.
     if ((parsed as { draft?: unknown }).draft === true) return null
+    const ref = (parsed as { ref?: unknown }).ref
+    // A ref-only body points at the spec already persisted in a tool call.
+    if (typeof ref === 'string' && (parsed as { kind?: unknown }).kind === undefined) {
+      return cardByRef(ref) ?? null
+    }
     return parseCardSpec(parsed)
   } catch {
     return null
@@ -48,9 +58,14 @@ export function readFenceCard(code: string): CardSpec | null {
  * @returns the card, or the inner code block.
  */
 export function FenceCard({ code, streaming, children, t }: FenceCardProps): ReactNode {
+  // A ref resolves against events that may arrive after this row first renders;
+  // subscribing makes the card appear as soon as its call is indexed.
+  const revision = useSyncExternalStore(subscribeCardRefs, cardRefsVersion, cardRefsVersion)
   const card = useMemo(
     () => streaming ? null : readFenceCard(code),
-    [code, streaming],
+    // The revision changes only when the ref index changes; it is a change
+    // signal, not an input to the parse itself.
+    [code, streaming, revision],
   )
 
   if (card === null) return <>{children}</>

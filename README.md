@@ -9,13 +9,14 @@
 | 正文围栏 | 内容 | 用户看到什么 |
 |---|---|---|
 | ```aisketch | `{"kind":"flowchart"\|"draw"\|"figure", "payload":{...}}` | 就地渲染的流程图 / 手绘插画 / 教学示意图 |
+| ```aisketch | `{"ref":"<show_card 结果里的 ref>"}` | 复用最近一次 `show_card` 的规格，正文不必再抄一遍 JSON |
 | ```aisketch-plot | `{"expr":"x^2", ...}` | 可交互函数图像：六种模式、参数滑块、追踪读数 |
 
-表格直接写成 Markdown，不再交给插件。`show_card` / `sketch_function` 工具保留为私有的规格校验与预览通道，公开图片一律由正文围栏渲染，所以图片正好落在解说文字之间，不会堆在回答末尾，也不会被工作步骤折叠隐藏。
+表格直接写成 Markdown，不再交给插件。`show_card` / `sketch_function` 工具保留为私有的规格校验与预览通道，公开图片一律由正文围栏渲染，所以图片正好落在解说文字之间，不会堆在回答末尾，也不会被工作步骤折叠隐藏。画图时可以只写 `{"ref":...}`：工具结果会回显一个 ref，客户端从持久化的 `tool/call` 参数里取回同一份规格，省掉正文里重复的长 JSON；直写完整 spec 的围栏仍然支持。
 
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![CI](https://github.com/QinLuza/dsh-aisketch/actions/workflows/ci.yml/badge.svg)
-![tests](https://img.shields.io/badge/tests-543%20passed-brightgreen)
+![tests](https://img.shields.io/badge/tests-552%20passed-brightgreen)
 ![dsh](https://img.shields.io/badge/dsh-0.2.2--rc.3-111)
 
 **零 base 改动**：全部走官方扩展点（`conversation.chat.markdown.fence` 围栏层、tool 注册），没有一行改动 `@deepseek-ai/dsh-*`。
@@ -73,7 +74,7 @@
 
 ### 3. `show_card` → `draw`
 
-手绘卡：模型只写中心线、形状、文字、胶带或像素网格；钢笔出锋、书法笔角度、荧光笔半透明、铅笔颗粒、手绘抖动全部由引擎算。支持 `draft: true` 私有草稿与最终稿，用户只看到成品。
+手绘卡：模型只写中心线、形状、文字、胶带或像素网格；钢笔出锋、书法笔角度、荧光笔半透明、铅笔颗粒、手绘抖动全部由引擎算。`show_card(draw)` 只做私有预览：工具结果带图、自检和 `ref`；模型随后在正文写 `{"ref":"..."}` 围栏发布，用户只看到这张公开卡片。`draw` 工具调用本身（无论是否带 `draft`）都不会再渲染成卡片，所以不会重影。
 
 ![山湖小屋手绘插画](docs/assets/screenshots/draw-illustration.png)
 
@@ -236,12 +237,12 @@ pnpm build:client  # 两个 lib/client.js
 
 ## 七、已知限制（照实说）
 
-- **有些卡片会被 DSH 的展示逻辑「吞掉」。** 工具调用按定义属于「回合过程」，而 dsh 的工作步骤展示有「简洁 / 标准 / 详细 / 完全展开」四档；在部分档位/版本下，过程区的卡片会被折叠或藏起来，**只有把信息展示切到「完全展开（verbose）」或展开对应回合才能看到**。这是 dsh 对回合过程的显示策略，**不是卡片没渲染，也不是插件坏了**。本插件已经把产出物同时挂到 `turnTail`，但宿主版本与展示设置仍会影响最终可见性；排查时先切「完全展开」，再看卡片是否在。**`table`、`flowchart`、`sketch_function`、`draw`、`figure` 都走同一条通道，表格同样适用**——表格在默认档位被折叠时，切到「完全展开」即可显示。
-- **「完全展开」档下会看到同一张卡两次**（过程行 + 产出物行），这是两张脸的副作用，目前未去重。
+- **公开卡片只来自正文围栏。** 把 spec 或 `{"ref":...}` 写进 ` ```aisketch ` 围栏，图片就落在解说文字之间；工作步骤的四档展示设置不会影响它。`show_card` 调用是私有预览/校验通道，不再向对话投影可见卡片，所以也不存在「过程行 + 产出物行」看到同一张卡两次的问题。
+- **`ref` 围栏取不到图？** 说明对应的 `tool/call` 事件已经不在当前加载窗口（例如老会话翻页）。改在围栏里直写完整 spec 即可；完整 spec 始终随正文一起持久化。
 - **「轨迹」页看不到卡片**：卡片的 view target 是 `chat`，轨迹页按设计只显示原始调用。
 - `figure` 目前只有四个模板，不是通用约束求解器；标签位置固定，不做自动避让。
 - `orbital_diagram` 支持 H–Zn，`atom_shell` 支持 H–Ca；超出范围会直接报错，不会猜。
-- `draw` 是确定性矢量手绘，不是像素级绘画模型；`draft` 草稿默认不展示，模型最多提交一次 final。
+- `draw` 是确定性矢量手绘，不是像素级绘画模型；`show_card(draw)` 永远是私有预览，公开图片只来自正文围栏。`ref` 围栏依赖对应 `tool/call` 事件仍在加载窗口内；老会话翻页后可能取不到，这时直写完整 spec 的围栏更稳。
 - **`draw` 卡片是一张位图快照**：图里的文字不可选中；每张 1200×800 的卡约占 8.6MB 显存（缓存上限 6 张）；首次上屏有约 100–300ms 的占位。换来的是滚动与放大不再重栅格化。
 - 模糊、混合模式、渐变都受绘制部件数量影响：三四百条 `path` 的卡仍会比几十条的慢一档，提示词里建议把大色块合并、少用重复罩染。
 - Host 半与 client 半的改动都需要重启应用才生效（无 HMR）。运行中不要重建 client 产物。

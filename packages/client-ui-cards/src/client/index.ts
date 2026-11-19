@@ -19,8 +19,11 @@ import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the SlotRegistry service merge (ctx.slots).
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+// Type-only: pulls the uiConversation service merge (ctx.uiConversation).
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { DRAW_KIND, FIGURE_KIND, FLOWCHART_KIND } from '@aisketch/cards-core'
 import { FenceCard } from './FenceCard.tsx'
+import { cardRefDefinition } from './card-refs.ts'
 import { DrawCard } from './DrawCard.tsx'
 import { FigureCard } from './FigureCard.tsx'
 import { FlowchartCard } from './FlowchartCard.tsx'
@@ -31,7 +34,7 @@ import { en, NS, zh } from './locales.ts'
 export const CARD_RENDERER_ID = '@aisketch/client-ui-cards'
 
 /** Cordis service dependencies of this plugin. */
-export const inject = ['locale', 'slots']
+export const inject = ['locale', 'slots', 'uiConversation']
 
 /**
  * Client plugin body: dictionaries, renderers, and the inline fence layer.
@@ -52,6 +55,12 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(
     () => registerCardRenderer(FIGURE_KIND, { id: CARD_RENDERER_ID, trust: 'native', component: FigureCard }),
     'client-ui-cards: figure renderer',
+  )
+  // State-only Definition: index persisted show_card calls so a fence can carry
+  // just {"ref":...} instead of a second copy of the spec. It publishes no node.
+  ctx.effect(
+    () => ctx.uiConversation.events.register(cardRefDefinition),
+    'client-ui-cards: card refs',
   )
   // The only public face: a wildcard fence layer renders any JSON card spec in
   // place, so a bare ``` fence or ```json still draws. Non-card fences pass

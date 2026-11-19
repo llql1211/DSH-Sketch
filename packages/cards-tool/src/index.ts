@@ -75,10 +75,11 @@ const DRAW_STYLE_GUIDANCE =
   + 'asked for a field note, diagram or poster. The card title is metadata, not ink.\n'
   + '- A field-note or annotated-diagram request may use paper, tape, a title and 1-3 short labels. A quick '
   + 'doodle may stay at 640x400.\n'
-  + 'Delivery: submit at most one private draft (draft:true) to inspect the preview and self-check, fix any '
-  + 'structural faults, then publish the finished drawing exactly once with draft omitted. A draft alone is not '
-  + 'delivered live; the user sees only the final card. Never publish intermediate versions or call show_card '
-  + 'repeatedly for the same drawing.'
+  + 'Delivery: call show_card with draft:true for a private preview and self-check. If the preview exposes a '
+  + 'fault, call it again with the corrected spec. Then publish the drawing exactly once in an ```aisketch '
+  + 'fence whose body is {"ref":"<the ref from the last show_card result>"} -- the client reuses that call '
+  + 'spec, so do not repeat the JSON. A draft alone is never delivered live; only the fenced card is public. '
+  + 'Never paste the self-check or an element list into the reply.'
 
 /**
  * The compact semantic schemas for the two teaching-figure templates.
@@ -216,12 +217,14 @@ export function apply(ctx: Context): void {
       + `Keep every payload under ${MAX_PAYLOAD_LENGTH} characters. `
       + 'A "draw" card comes back with a picture of what you sent plus a machine self-check. '
       + `${DRAW_STYLE_GUIDANCE} `
-      + 'For a non-trivial drawing, call show_card with draft:true at most once to get a private preview '
-      + 'and self-check, fix the payload if needed, then put the finished drawing once in an ```aisketch '
-      + 'fence with draft omitted. A draft is private and does not appear in the conversation. Never '
-      + 'publish intermediate versions and do not paste the self-check or an element list into the reply; '
-      + 'a short lead-in, the fenced card, and the next paragraph are enough. If the request is a trivial '
-      + 'mark you are sure about, skip the draft and publish once.',
+      + 'For a non-trivial drawing, call show_card with draft:true to get a private preview and self-check. '
+      + 'If the drawing needs a correction, call show_card again with the corrected spec. Then put the '
+      + 'finished drawing once in an ```aisketch fence whose body is {"ref":"<the ref in the last show_card '
+      + 'result>"}; the client resolves that spec from the persisted tool call, so do not repeat the JSON. '
+      + 'A draft is private and does not appear in the conversation. Never publish intermediate versions '
+      + 'and do not paste the self-check or an element list into the reply; a short lead-in, the fenced '
+      + 'card, and the next paragraph are enough. If the request is a trivial mark you are sure about, '
+      + 'write the full spec inline in the fence instead.',
   })
 
   ctx.tools.register(defineTool({
@@ -236,8 +239,10 @@ export function apply(ctx: Context): void {
       + `${FLOWCHART_PAYLOAD_HINT} ${FIGURE_PAYLOAD_HINT} ${DRAW_PAYLOAD_HINT} Unknown kinds are accepted `
       + 'for validation but have no client renderer. A drawing can be returned as a private draft '
       + '(draft:true): you get a rendered preview plus a machine self-check, but no card is shown. '
-      + 'The public picture goes in the FINAL answer as a fenced ```aisketch block containing this exact '
-      + 'JSON spec, placed between the paragraphs it explains. Do not publish intermediate revisions.',
+      + 'The result carries a ref handle. The public picture goes in the FINAL answer as a fenced ```aisketch '
+      + 'block whose body is {"ref":"<ref>"}, which reuses this call spec without repeating the JSON; writing '
+      + 'the full spec inline in that fence is also accepted. Place it between the paragraphs it explains. Do '
+      + 'not publish intermediate revisions.',
     parameters: {
       kind: {
         type: 'string',
@@ -260,7 +265,7 @@ export function apply(ctx: Context): void {
       },
       draft: {
         type: 'boolean',
-        description: 'Draw cards only: submit this as a private draft. The preview and self-check come back to you, but no card is shown to the user. Use at most one draft, then submit the finished drawing with draft omitted. Do not publish intermediate revisions.',
+        description: 'Draw cards only: submit this as a private draft. The preview and self-check come back to you, but no card is shown to the user. Inspect it, then publish the drawing once with the ref from the result in an aisketch fence; do not repeat the JSON. Do not publish intermediate revisions.',
       },
     },
     output: {
@@ -268,6 +273,11 @@ export function apply(ctx: Context): void {
         type: 'object',
         additionalProperties: false,
         properties: {
+          ref: {
+            type: 'string',
+            required: true,
+            description: 'Short handle for this call. Put {"ref":"<ref>"} in an aisketch fence to render the same spec without repeating its JSON.',
+          },
           card: {
             type: 'object',
             additionalProperties: true,
@@ -295,7 +305,10 @@ export function apply(ctx: Context): void {
         },
       },
       render: (_args, value) => {
-        const text = value.selfCheck === undefined ? value.summary : `${value.summary}\n${value.selfCheck}`
+        const body = value.selfCheck === undefined ? value.summary : `${value.summary}\n${value.selfCheck}`
+        // The ref rides in the model-visible text so the model can paste a tiny
+        // {"ref":...} fence instead of regenerating the whole spec a second time.
+        const text = `${body}\n- ref: ${value.ref} -> fence: {"ref":"${value.ref}"}`
         const blocks: ContentBlock[] = [{ type: 'text', text }]
         // The attachment is committed before the value is returned, so this block
         // references durable bytes and a replay renders the same picture.
@@ -316,7 +329,7 @@ export function apply(ctx: Context): void {
         if (draw !== null) {
           selfCheck = formatDrawDiagnostics(analyzeDraw(buildDrawDisplayList(draw)))
           if (rawArgs.draft === true) {
-            selfCheck += '\n- private draft: not shown to the user; refine, then submit the finished drawing once with draft omitted.'
+            selfCheck += '\n- private draft: not shown to the user; publish this spec once with the ref below in an aisketch fence.'
           }
           if (rawArgs.preview !== false && !exec.signal.aborted) {
             const outcome = await buildDrawPreview(ctx, draw, routeOf(exec), exec.signal)
@@ -327,6 +340,7 @@ export function apply(ctx: Context): void {
       }
 
       return {
+        ref: String(exec.callId),
         card: asJsonCard(admitted.card),
         summary: summarizeCard(admitted.card),
         ...selfCheck === undefined ? {} : { selfCheck },

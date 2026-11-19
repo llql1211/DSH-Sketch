@@ -4,6 +4,7 @@ import type { ComponentType } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FenceCard } from '../src/client/FenceCard.tsx'
+import { rememberCardRef } from '../src/client/card-refs.ts'
 import { registerCardRenderer } from '../src/client/registry.ts'
 import type { CardRendererProps } from '../src/client/registry.ts'
 
@@ -37,6 +38,19 @@ describe('an aisketch fence', () => {
 
   it('never publishes a private draft', () => {
     expect(render('{"kind":"note","payload":{},"draft":true}')).toContain('<pre>')
+  })
+
+  it('renders a ref-only fence from the spec remembered for that call', () => {
+    rememberCardRef('fence-ref-1', { version: 1, kind: 'note', payload: {} }, 1)
+    expect(render('{"ref":"fence-ref-1"}')).toContain('data-kind="note"')
+  })
+
+  it('leaves an unresolved ref as raw code', () => {
+    expect(render('{"ref":"no-such-call"}')).toContain('<pre>')
+  })
+
+  it('still renders a full inline spec without any remembered call', () => {
+    expect(render('{"kind":"note","payload":{}}')).toContain('data-kind="note"')
   })
 
   it('leaves an unrelated JSON fence as code', () => {

@@ -78,13 +78,13 @@ describe('the inline fence is the only public face', () => {
     const wiring = wire()
     expect(wiring.registeredSlots).not.toContain('conversation.chat.node/card')
     expect(wiring.registeredSlots).not.toContain(`conversation.chat.turnTail/${CARD_RENDERER_ID}`)
-    expect(wiring.eventKinds).toEqual([])
+    expect(wiring.eventKinds).toEqual(['card-ref'])
   })
 })
 
 describe('the service gate', () => {
   it('declares every service the body reads', () => {
-    expect([...inject].sort()).toEqual(['locale', 'slots'])
+    expect([...inject].sort()).toEqual(['locale', 'slots', 'uiConversation'])
   })
 
   it('registers dictionaries and graphic renderers as effects', () => {
@@ -95,6 +95,7 @@ describe('the service gate', () => {
       'client-ui-cards: flowchart renderer',
       'client-ui-cards: draw renderer',
       'client-ui-cards: figure renderer',
+      'client-ui-cards: card refs',
     ])
     expect(wiring.rendererKinds).toContain('flowchart')
     expect(wiring.rendererKinds).toContain('draw')

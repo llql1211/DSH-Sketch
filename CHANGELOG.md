@@ -2,6 +2,17 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与语义化版本。
 
+## [Unreleased]
+
+### 改动
+
+- `show_card` 结果新增 `ref`（工具调用 id）。正文围栏可用 `{"ref":"..."}` 复用已持久化的 `tool/call` 规格，不再把长 JSON 写两遍；直写完整 spec 的围栏仍然支持。
+- `draw` 的 `show_card` 调用一律不投影为可见卡片（无论是否带 `draft`），公开图片只来自正文围栏，同一张图不再重影。
+
+### 验证
+
+- 552 例测试、各包 `tsc --noEmit` 与 client 构建全清。
+
 ## [0.3.0] — 2026-10-25
 
 手绘卡补上「光」与「墨」的表达力，并把重卡的渲染改成一次性位图快照。
