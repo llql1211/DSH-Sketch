@@ -334,8 +334,15 @@ export function resolveGeometry(
     curves.push({ expr, ...(label === undefined ? {} : { label }), points: sample(expr) })
   }
 
-  const primary = first.map((p) => [p.x, p.y] as const)
-  const yRange: Range = options.frozenYRange ?? autoRangeY(primary)
+  // The y-window must cover every curve that will be drawn on these axes.
+  // Fitting only the primary expression clips comparison curves whose values
+  // leave its span — `x^2` against `2x` over [-4, 4] hid 42% of the line below
+  // the frame. In compare mode the union of all sampled curves is the frame;
+  // every other mode still fits its single expression as before.
+  const fittingSamples = mode === 'compare'
+    ? curves.flatMap((c) => c.points.map((p) => [p.x, p.y] as const))
+    : first.map((p) => [p.x, p.y] as const)
+  const yRange: Range = options.frozenYRange ?? autoRangeY(fittingSamples)
 
   const geometry: SketchGeometry = { mode, xRange, yRange, curves }
 

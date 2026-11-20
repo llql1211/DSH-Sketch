@@ -190,6 +190,21 @@ describe('resolveGeometry', () => {
     expect(g.curves[2]?.expr).toBe('2x')
   })
 
+  it('fits the y-window to every curve in compare mode', () => {
+    const g = resolveGeometry({
+      expr: 'x^2',
+      mode: 'compare',
+      compare: ['直线, 2x'],
+    })
+    const ys = g.curves.flatMap((c) => c.points.map((p) => p.y)).filter((y): y is number => y !== null)
+    // x^2 alone fits roughly [-1.2, 16.6]; 2x reaches -8 and used to spend
+    // 42% of its samples below the frame. The held window must cover both.
+    expect(g.yRange.yMin).toBeLessThan(-6)
+    expect(g.yRange.yMax).toBeGreaterThan(15)
+    expect(Math.min(...ys)).toBeGreaterThan(g.yRange.yMin - 1)
+    expect(Math.max(...ys)).toBeLessThan(g.yRange.yMax + 1)
+  })
+
   it('yields empty geometry instead of throwing on unparsable input', () => {
     const g = resolveGeometry({ expr: 'sin(' })
     expect(g.curves.length).toBe(0)
