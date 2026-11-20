@@ -75,6 +75,38 @@ describe('parser', () => {
     expect(pts.filter(([, y]) => y === null).length).toBeGreaterThanOrEqual(1)
   })
 
+  it('inserts an exact point at a finite domain edge', () => {
+    const pts = build('sqrt(4 - x*x)').sample(-4, 4, 900, {})
+    const finite = pts.filter(([, y]) => y !== null)
+    // 450 uniform samples inside [-2, 2], plus the two inserted edges.
+    expect(finite.length).toBe(452)
+    expect(finite[0]![0]).toBeCloseTo(-2, 4)
+    expect(finite[0]![1]).toBeCloseTo(0, 3)
+    expect(finite.at(-1)![0]).toBeCloseTo(2, 4)
+    expect(finite.at(-1)![1]).toBeCloseTo(0, 3)
+    expect(pts.every(([x], i) => i === 0 || x > pts[i - 1]![0])).toBe(true)
+  })
+
+  it('inserts edges at parameter-driven domain bounds', () => {
+    const pts = build('sqrt(A - x*x)').sample(-4, 4, 900, { A: 9 })
+    const finite = pts.filter(([, y]) => y !== null)
+    expect(finite[0]![0]).toBeCloseTo(-3, 4)
+    expect(finite.at(-1)![0]).toBeCloseTo(3, 4)
+    expect(finite.at(-1)![1]).toBeCloseTo(0, 3)
+  })
+
+  it('does not invent values at poles or removable holes', () => {
+    // x = 0 lands exactly on this grid, so the hole is a real null sample;
+    // the index shifts once edge points are inserted, so find it by x.
+    const hole = build('sin(x)/x').sample(-4, 4, 801, {})
+    expect(hole.find(([x]) => Math.abs(x) < 1e-12)?.[1]).toBeNull()
+    const pole = build('1/x').sample(-2, 2, 9, {})
+    expect(pole.find(([x]) => Math.abs(x) < 1e-12)?.[1]).toBeNull()
+    for (const pts of [hole, pole]) {
+      expect(pts.every(([, y]) => y === null || Number.isFinite(y))).toBe(true)
+    }
+  })
+
   it('samples with parameter values applied', () => {
     expect(build('A*x').sample(0, 2, 3, { A: 5 })).toEqual([
       [0, 0],

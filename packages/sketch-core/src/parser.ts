@@ -385,7 +385,8 @@ export interface CompiledExpression {
   readonly eval: CompiledFn
   /**
    * Sample the function over an x-range.
-   * Non-finite results become `null` so plotters can break the line there.
+   * Non-finite results become `null` so plotters can break the line there;
+   * a finite domain edge between two samples is inserted exactly.
    * @param xMin - left bound.
    * @param xMax - right bound.
    * @param count - number of samples (inclusive of both ends).
@@ -393,6 +394,65 @@ export interface CompiledExpression {
    * @returns array of [x, y|null].
    */
   readonly sample: (xMin: number, xMax: number, count: number, params?: Scope) => SamplePoint[]
+}
+
+/**
+ * Add an exact sample at each domain edge between a finite sample and a null.
+ *
+ * A uniform grid almost never lands on the endpoint of a restricted domain.
+ * Over [-4, 4] with 900 samples, `sqrt(4-x^2)` stops at x≈1.998 with y≈0.094
+ * and the next sample is null, leaving a ~10px gap above the x-axis. Adding
+ * samples barely helps: the edge behaves like sqrt(dx), so doubling the count
+ * only shrinks the gap by √2.
+ *
+ * Bisect the "is this value finite?" predicate between the two neighbours,
+ * then add the boundary point **only when its value is finite**. That closes
+ * sqrt/acos endpoints (where the value is exactly 0 at the edge) while poles
+ * and removable holes keep their original break.
+ *
+ * @param samples - uniformly sampled [x, y|null] pairs.
+ * @param evaluate - the compiled evaluator.
+ * @param params - scope merged into every evaluation.
+ * @returns the samples with finite domain edges inserted.
+ */
+function withDomainEdges(
+  samples: readonly SamplePoint[],
+  evaluate: CompiledFn,
+  params: Scope,
+): SamplePoint[] {
+  const valueAt = (x: number): number | null => {
+    try {
+      const y = evaluate({ x, ...params })
+      return Number.isFinite(y) ? y : null
+    } catch {
+      return null
+    }
+  }
+
+  const out: SamplePoint[] = []
+  for (let i = 0; i < samples.length; i++) {
+    const current = samples[i] as SamplePoint
+    out.push(current)
+    const next = samples[i + 1]
+    if (next === undefined) break
+    const finiteOnLeft = current[1] !== null
+    if (finiteOnLeft === (next[1] !== null)) continue
+
+    let lo = current[0]
+    let hi = next[0]
+    // `lo` stays on the side the left neighbour occupied, `hi` on the other,
+    // so the interval always straddles the edge.
+    for (let step = 0; step < 24; step++) {
+      const mid = (lo + hi) / 2
+      if (mid === lo || mid === hi) break
+      if ((valueAt(mid) !== null) === finiteOnLeft) lo = mid
+      else hi = mid
+    }
+    const edgeX = finiteOnLeft ? lo : hi
+    const edgeY = valueAt(edgeX)
+    if (edgeY !== null) out.push([edgeX, edgeY])
+  }
+  return out
 }
 
 /**
@@ -421,7 +481,7 @@ export function build(src: string): CompiledExpression {
         }
         out.push([x, Number.isFinite(y) ? y : null])
       }
-      return out
+      return withDomainEdges(out, fn, params)
     },
   }
 }
