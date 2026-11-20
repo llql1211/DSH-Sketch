@@ -32,6 +32,7 @@ import {
   drawPieChart,
   drawPoint,
   drawRiemann,
+  squareBounds,
 } from './render.ts'
 import type { ChartPalette, ChartType, Sample, Series } from './render.ts'
 import { readSurfaceColor, useThemeRefresh } from './theme.ts'
@@ -200,6 +201,10 @@ interface SketchPlotProps extends SketchFigureProps {
   readonly width: number
   /** Canvas height in CSS pixels. */
   readonly height: number
+  /** Whether one pixel covers equal x/y units, set by the card's toggle. */
+  readonly equalAspect: boolean
+  /** Change the equal-aspect view; shared by the card and its overlay. */
+  readonly onEqualAspectChange: (value: boolean) => void
   /** Show the expand control; absent on the overlay's own plot. */
   readonly onExpand?: (() => void) | undefined
   /** Show the close control; only the overlay's plot has one. */
@@ -212,7 +217,7 @@ interface SketchPlotProps extends SketchFigureProps {
  * @param props - the persisted spec, the `sketch` dictionary, and the surface size.
  * @returns the card.
  */
-function SketchPlot({ spec, t, width, height, onExpand, onClose }: SketchPlotProps) {
+function SketchPlot({ spec, t, width, height, equalAspect, onEqualAspectChange, onExpand, onClose }: SketchPlotProps) {
   const canvas = useRef<HTMLCanvasElement | null>(null)
   // A light/dark switch changes no prop here; the hook supplies a repaint trigger.
   const themeRefresh = useThemeRefresh()
@@ -269,10 +274,12 @@ function SketchPlot({ spec, t, width, height, onExpand, onClose }: SketchPlotPro
   // compiling the raw line took the whole card down once.
   const evaluators = useMemo(() => compileCurves(spec), [spec])
 
-  const viewport = useMemo(
-    () => new Viewport(geometry.xRange[0], geometry.xRange[1], frozenY.yMin, frozenY.yMax).fit(width, height),
-    [geometry.xRange, frozenY, width, height],
-  )
+  const viewport = useMemo(() => {
+    const [x0, x1, y0, y1] = equalAspect
+      ? squareBounds(geometry.xRange[0], geometry.xRange[1], frozenY.yMin, frozenY.yMax, width, height)
+      : [geometry.xRange[0], geometry.xRange[1], frozenY.yMin, frozenY.yMax]
+    return new Viewport(x0 as number, x1 as number, y0 as number, y1 as number).fit(width, height)
+  }, [geometry.xRange, frozenY, width, height, equalAspect])
 
   // Draw whenever the geometry, the tracer or the host theme moves.
   useEffect(() => {
@@ -350,6 +357,16 @@ function SketchPlot({ spec, t, width, height, onExpand, onClose }: SketchPlotPro
       <div className={CLS.head}>
         <span className={CLS.title}>{spec.expr}</span>
         <span className={CLS.chip}>{modeLabel(mode, t)}</span>
+        {mode === 'data' ? null : (
+          <label className={CLS.aspect}>
+            <input
+              type="checkbox"
+              checked={equalAspect}
+              onChange={(event) => onEqualAspectChange(event.currentTarget.checked)}
+            />
+            {t('card.equalAspect')}
+          </label>
+        )}
         <span className={CLS.actions}>
           {lead !== undefined && (
             <button
@@ -468,6 +485,10 @@ function SketchPlot({ spec, t, width, height, onExpand, onClose }: SketchPlotPro
  */
 export function SketchFigure({ spec, t }: SketchFigureProps) {
   const [expanded, setExpanded] = useState(false)
+  // A pure view setting, so it lives here rather than in the spec and is shared
+  // by the card and its expanded copy (unlike slider values, which the overlay
+  // deliberately restarts from the spec).
+  const [equalAspect, setEqualAspect] = useState(false)
   useEffect(() => {
     if (!expanded) return
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -478,7 +499,15 @@ export function SketchFigure({ spec, t }: SketchFigureProps) {
   }, [expanded])
   return (
     <>
-      <SketchPlot spec={spec} t={t} width={WIDTH} height={HEIGHT} onExpand={() => setExpanded(true)} />
+      <SketchPlot
+        spec={spec}
+        t={t}
+        width={WIDTH}
+        height={HEIGHT}
+        equalAspect={equalAspect}
+        onEqualAspectChange={setEqualAspect}
+        onExpand={() => setExpanded(true)}
+      />
       {expanded && typeof document !== 'undefined'
         ? createPortal(
           <div className={CLS.overlay} onClick={() => setExpanded(false)}>
@@ -494,6 +523,8 @@ export function SketchFigure({ spec, t }: SketchFigureProps) {
                 t={t}
                 width={EXPANDED_WIDTH}
                 height={EXPANDED_HEIGHT}
+                equalAspect={equalAspect}
+                onEqualAspectChange={setEqualAspect}
                 onClose={() => setExpanded(false)}
               />
             </div>

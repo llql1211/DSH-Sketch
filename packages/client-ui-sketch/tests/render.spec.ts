@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { COLORS, Viewport, drawAxes, drawCurve, drawPieChart, drawRiemann } from '../src/client/render.ts'
+import { COLORS, Viewport, drawAxes, drawCurve, drawPieChart, drawRiemann, squareBounds } from '../src/client/render.ts'
 import type { Sample } from '../src/client/render.ts'
 
 /** One recorded context call. */
@@ -133,6 +133,27 @@ describe('drawRiemann', () => {
     const vp = new Viewport(0, 1, 0, 1).fit(620, 380)
     drawRiemann(ctx, vp, () => Number.NaN, 0, 1, 4)
     expect(callsOf(ctx, 'fillRect')).toHaveLength(0)
+  })
+})
+
+describe('squareBounds', () => {
+  it('expands the shorter axis so one pixel covers equal x/y units', () => {
+    // The screenshot's window: x span 8 over 620px, y span 3.48 over 380px.
+    const [x0, x1, y0, y1] = squareBounds(-4, 4, -1.24, 2.24, 620, 380)
+    const vp = new Viewport(x0 as number, x1 as number, y0 as number, y1 as number).fit(620, 380)
+    expect((x1 as number) - (x0 as number)).toBeCloseTo(8, 6)
+    expect((y1 as number) - (y0 as number)).toBeCloseTo(8 * 380 / 620, 6)
+    // One math unit is the same number of pixels on either axis.
+    expect(Math.abs(vp.px(1) - vp.px(0))).toBeCloseTo(Math.abs(vp.py(1) - vp.py(0)), 6)
+    // Nothing is cropped: both original windows sit inside the widened one.
+    expect(x0).toBeLessThanOrEqual(-4)
+    expect(x1).toBeGreaterThanOrEqual(4)
+    expect(y0).toBeLessThanOrEqual(-1.24)
+    expect(y1).toBeGreaterThanOrEqual(2.24)
+  })
+
+  it('leaves bounds untouched for a degenerate canvas', () => {
+    expect(squareBounds(-1, 1, -1, 1, 0, 380)).toEqual([-1, 1, -1, 1])
   })
 })
 

@@ -21,6 +21,7 @@ export const CLS = {
   head: 'sk-head',
   title: 'sk-title',
   chip: 'sk-chip',
+  aspect: 'sk-aspect',
   action: 'sk-action',
   actions: 'sk-actions',
   overlay: 'sk-overlay',
@@ -70,6 +71,21 @@ const SHEET = `
   background: color-mix(in srgb, var(--dsw-alias-bg-base, #fff) 80%, #378add);
   color: var(--dsw-alias-label-secondary, #5f6368);
   font-size: calc(11px + var(--dsh-content-font-delta, 0px));
+}
+.${CLS.aspect} {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--dsw-alias-label-secondary, #5f6368);
+  font-size: calc(11px + var(--dsh-content-font-delta, 0px));
+  cursor: pointer;
+  user-select: none;
+}
+.${CLS.aspect} input {
+  margin: 0;
+  accent-color: #378add;
+  cursor: pointer;
 }
 .${CLS.actions} {
   display: flex;

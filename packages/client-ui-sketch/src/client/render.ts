@@ -190,6 +190,43 @@ export class Viewport {
 }
 
 /**
+ * Widen math bounds to a single x/y scale for the "equal aspect" view.
+ *
+ * The default viewport fits each axis to the whole canvas independently, which
+ * is why `sqrt(4-x^2)` draws as a squat arc: 8 x-units span 620px while 3.5
+ * y-units span 380px. One shared scale is `min(width/xSpan, height/ySpan)`;
+ * the axis that was relatively shorter is then expanded with letterboxing.
+ * Nothing is ever cropped, so every curve stays visible in the square view.
+ *
+ * @param xMin,xMax - fitted x bounds.
+ * @param yMin,yMax - fitted y bounds.
+ * @param width,height - canvas size in CSS pixels.
+ * @returns `[xMin, xMax, yMin, yMax]` with one pixel covering equal x/y units.
+ */
+export function squareBounds(
+  xMin: number,
+  xMax: number,
+  yMin: number,
+  yMax: number,
+  width: number,
+  height: number,
+): readonly [number, number, number, number] {
+  if (width <= 0 || height <= 0) return [xMin, xMax, yMin, yMax]
+  const xSpan = xMax - xMin
+  const ySpan = yMax - yMin
+  if (!(xSpan > 0) || !(ySpan > 0)) return [xMin, xMax, yMin, yMax]
+  const scale = Math.min(width / xSpan, height / ySpan)
+  const cx = (xMin + xMax) / 2
+  const cy = (yMin + yMax) / 2
+  return [
+    cx - width / scale / 2,
+    cx + width / scale / 2,
+    cy - height / scale / 2,
+    cy + height / scale / 2,
+  ]
+}
+
+/**
  * Pick a "nice" axis step close to a target, from the 1/2/5 progression.
  * @param target - desired step size in math units.
  * @returns a human-friendly step.
