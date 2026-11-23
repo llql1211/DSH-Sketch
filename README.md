@@ -65,7 +65,7 @@
 
 ### 1. `show_card` → `flowchart`
 
-1..40 节点、≤80 连线，`shape` ∈ `terminal` / `process` / `decision`。分层布局、分支标签、回边绕右侧 gutter、共享端点自动扇开。点卡片右上角可放大显示。
+1..40 节点、≤80 连线，`shape` ∈ `terminal` / `process` / `decision`。分层布局、分支标签、共享端点自动扇开；`direction` 可选 `TB`（默认，从上到下、回边走右侧 gutter）或 `LR`（从左到右、回边走下方 gutter）。点卡片右上角可放大显示。
 
 ![奇偶判断流程图](docs/assets/screenshots/flowchart-parity.png)
 

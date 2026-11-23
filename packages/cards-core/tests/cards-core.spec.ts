@@ -107,7 +107,7 @@ describe('flowchart payload', () => {
     ],
   }
 
-  it('parses nodes and connections, defaulting an omitted shape to process', () => {
+  it('parses nodes, connections and direction, defaulting an omitted shape to process', () => {
     expect(parseFlowchartPayload(ifElse)).toEqual({
       nodes: [
         { id: 'start', label: '开始', shape: 'terminal' },
@@ -120,12 +120,21 @@ describe('flowchart payload', () => {
         { from: 'check', to: 'yes', label: '是' },
         { from: 'check', to: 'no', label: '否' },
       ],
+      direction: 'TB',
     })
   })
 
   it('defaults connections to empty, so a single node is a legal diagram', () => {
     expect(parseFlowchartPayload({ nodes: [{ id: 'only', label: '一步' }] }))
-      .toEqual({ nodes: [{ id: 'only', label: '一步', shape: 'process' }], edges: [] })
+      .toEqual({ nodes: [{ id: 'only', label: '一步', shape: 'process' }], edges: [], direction: 'TB' })
+  })
+
+  it('admits an explicit LR direction', () => {
+    expect(parseFlowchartPayload({ ...ifElse, direction: 'LR' })?.direction).toBe('LR')
+  })
+
+  it('refuses an unknown direction', () => {
+    expect(parseFlowchartPayload({ ...ifElse, direction: 'BT' })).toBeNull()
   })
 
   it('drops a blank connection label instead of drawing an empty chip', () => {

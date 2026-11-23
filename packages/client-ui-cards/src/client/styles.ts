@@ -51,6 +51,7 @@ export const CLS = {
   kind: 'cd-kind',
   summary: 'cd-summary',
   scroll: 'cd-scroll',
+  chartScroll: 'cd-chart-scroll',
   table: 'cd-table',
   th: 'cd-th',
   td: 'cd-td',
@@ -125,12 +126,20 @@ const SHEET = `
   font-size: calc(11px + var(--dsh-content-font-delta, 0px));
   color: var(--dsw-alias-label-secondary, #5f6368);
 }
-.${CLS.scroll} {
-  max-height: 320px;
+.${CLS.scroll},
+.${CLS.chartScroll} {
   overflow: auto;
   border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.08));
   border-radius: 8px;
   background: var(--dsw-alias-bg-base, #fff);
+}
+.${CLS.scroll} {
+  max-height: 320px;
+}
+/* A flowchart is read as a whole: give a tall TB diagram more room before it
+   scrolls, without letting it swallow the chat column. */
+.${CLS.chartScroll} {
+  max-height: 480px;
 }
 .${CLS.table} {
   width: 100%;
@@ -296,12 +305,17 @@ const SHEET = `
   border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
 }
-.${CLS.dialog} .${CLS.scroll} {
+.${CLS.dialog} .${CLS.scroll},
+.${CLS.dialog} .${CLS.chartScroll} {
   max-height: none;
 }
+/* Keep the authored pixel size: stretching a tall TB chart to dialog width
+   inflates its height and shrinks its labels. The dialog itself scrolls. */
 .${CLS.dialog} .${CLS.chart} {
-  width: 100%;
+  width: auto;
   height: auto;
+  max-width: 100%;
+  max-height: 88vh;
 }
 /* The expanded copy trades the inline caps for the dialog's much larger seat. */
 .${CLS.dialog} .${CLS.art} {

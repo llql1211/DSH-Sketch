@@ -35,10 +35,12 @@ export const inject = ['tools', 'systemPrompt']
  * structure only, and the renderer -- not the model -- places every box.
  */
 const FLOWCHART_PAYLOAD_HINT =
-  `A "${FLOWCHART_KIND}" card takes { nodes: { id, label, shape? }[], edges: { from, to, label? }[] } `
+  `A "${FLOWCHART_KIND}" card takes { nodes: { id, label, shape? }[], edges: { from, to, label? }[], direction? } `
   + `with 1..${MAX_FLOWCHART_NODES} nodes and at most ${MAX_FLOWCHART_EDGES} connections. `
   + 'Ids must be unique and every connection must name declared nodes; shape is "terminal", "process" '
   + `or "decision" (default "process"); labels fit in ${MAX_FLOWCHART_LABEL_LENGTH} characters. `
+  + 'direction is "TB" (top-to-bottom, the default) or "LR" (left-to-right); arrows enter and leave '
+  + 'the top/bottom edges in TB and the left/right edges in LR. '
   + 'Never send coordinates or SVG: the client lays the diagram out.'
 
 /**
