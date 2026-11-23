@@ -225,10 +225,13 @@ const SHEET = `
   font-size: calc(12px + var(--dsh-content-font-delta, 0px));
   fill: var(--dsw-alias-label-primary, #1f1f1f);
 }
-/* The seats hug the picture instead of filling the column, so a small sketch
-   is not blown up and a centred illustration leaves the prose visible. */
+/* The seats hug their content instead of filling the column, so a small sketch
+   is not blown up and a centred illustration -- or flowchart -- leaves the
+   prose visible. A chart wider than the column is clamped back to full width,
+   so its left edge stays reachable by scrolling. */
 .${CLS.drawScroll},
-.${CLS.figureScroll} {
+.${CLS.figureScroll},
+.${CLS.chartScroll} {
   width: fit-content;
   max-width: 100%;
   margin: 0 auto;
