@@ -13,7 +13,7 @@
  */
 import type { ConversationNodeDefinition } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
-import type { SketchSpec } from '@aisketch/sketch-core'
+import type { CanvasSpec } from '@aisketch/sketch-core'
 import { readSpec } from './spec.ts'
 
 /** The wire name whose results carry a plot spec. */
@@ -23,7 +23,7 @@ const SKETCH_TOOL_NAME = 'sketch_function'
 export interface SketchEntry {
   readonly callId: string
   readonly seq: number
-  readonly spec: SketchSpec
+  readonly spec: CanvasSpec
 }
 
 /** Immutable plot facts published against one Turn. */

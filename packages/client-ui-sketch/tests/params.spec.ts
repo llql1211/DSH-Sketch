@@ -1,64 +1,63 @@
 /**
  * Parameter interaction primitives: the local value map, the slider step, and
  * the y-window union that keeps the axes still while any parameter is dragged.
- *
- * These are pure functions over the persisted spec, so the interaction layer's
- * two known traps are testable without a DOM: a window that follows the current
- * value (the "axes move, curve doesn't" defect), and a degenerate parameter box
- * that yields a zero or NaN slider step.
  */
 import { describe, expect, it } from 'vitest'
-import { resolveGeometry } from '@aisketch/sketch-core'
-import type { SketchSpec } from '@aisketch/sketch-core'
+import { resolveCanvas } from '@aisketch/sketch-core'
+import type { CanvasSpec } from '@aisketch/sketch-core'
 import { compileCurves, freezeWindow, initialValues, stepOf, withValues } from '../src/client/params.ts'
 
 describe('compileCurves', () => {
-  it('strips the label from a comparison line before compiling it', () => {
-    // The regression: compiling the raw "高斯, exp(-x^2)" line threw
-    // `ParseError: Unexpected character "高"` during render and took the whole
-    // card slot down (2026-10-18).
-    const spec: SketchSpec = { expr: 'sin(x)/x', mode: 'compare', compare: ['高斯, exp(-x^2)', '直线, x/3'] }
+  it('compiles bare expressions and styled curve objects', () => {
+    const spec: CanvasSpec = {
+      curves: ['sin(x)/x', { expr: 'exp(-x^2)', label: '高斯' }, { expr: 'x/3', label: '直线' }],
+    }
     const compiled = compileCurves(spec)
     expect([...compiled.keys()].sort()).toEqual(['exp(-x^2)', 'sin(x)/x', 'x/3'])
     for (const fn of compiled.values()) expect(typeof fn).toBe('function')
   })
 
-  it('keeps a bare expression and skips one the interpreter refuses', () => {
-    const spec: SketchSpec = { expr: 'sin(x)', compare: ['cos(x)', '1 +'] }
-    const compiled = compileCurves(spec)
+  it('skips one the interpreter refuses without taking the card down', () => {
+    const compiled = compileCurves({ curves: ['sin(x)', 'cos(x)', '1 +'] })
     expect([...compiled.keys()].sort()).toEqual(['cos(x)', 'sin(x)'])
   })
 
-  it('evaluates the compiled comparison curve at a point', () => {
-    const compiled = compileCurves({ expr: 'sin(x)', compare: ['高斯, exp(-x^2)'] })
-    const gauss = compiled.get('exp(-x^2)')
-    expect(gauss?.({ x: 0 })).toBeCloseTo(1)
+  it('evaluates a compiled curve at a point', () => {
+    const compiled = compileCurves({ curves: [{ expr: 'exp(-x^2)', label: '高斯' }] })
+    expect(compiled.get('exp(-x^2)')?.({ x: 0 })).toBeCloseTo(1)
   })
 })
 
 describe('initialValues', () => {
   it('rests every parameter at the value the call declared', () => {
-    expect(initialValues({ expr: 'A*sin(w*x+p)', params: { A: [0.2, 2, 1], w: [0.5, 4, 0.5], p: [0, 6.28, 0] } }))
-      .toEqual({ A: 1, w: 0.5, p: 0 })
+    expect(initialValues({
+      curves: ['A*sin(w*x+p)'], params: { A: [0.2, 2, 1], w: [0.5, 4, 0.5], p: [0, 6.28, 0] },
+    })).toEqual({ A: 1, w: 0.5, p: 0 })
   })
 
   it('is empty for a spec with no parameters', () => {
-    expect(initialValues({ expr: 'sin(x)' })).toEqual({})
+    expect(initialValues({ curves: ['sin(x)'] })).toEqual({})
   })
 })
 
 describe('withValues', () => {
-  const spec: SketchSpec = { expr: 'A*x', params: { A: [0, 10, 2] }, range: [-1, 1], compare: ['x'] }
+  const spec: CanvasSpec = {
+    curves: [{ expr: 'A*x', label: 'line', dash: 'dashed' }],
+    params: { A: [0, 10, 2] },
+    x: [-1, 1],
+  }
 
   it('replaces only the current slot of each declared parameter', () => {
     expect(withValues(spec, { A: 7 })).toEqual({
-      expr: 'A*x', params: { A: [0, 10, 7] }, range: [-1, 1], compare: ['x'],
+      curves: [{ expr: 'A*x', label: 'line', dash: 'dashed' }],
+      params: { A: [0, 10, 7] },
+      x: [-1, 1],
     })
   })
 
   it('ignores keys the spec never declared and leaves the spec alone when there are none', () => {
     expect(withValues(spec, { Z: 1 })).toEqual(spec)
-    expect(withValues({ expr: 'sin(x)' }, { A: 1 })).toEqual({ expr: 'sin(x)' })
+    expect(withValues({ curves: ['sin(x)'] }, { A: 1 })).toEqual({ curves: ['sin(x)'] })
   })
 })
 
@@ -77,30 +76,31 @@ describe('stepOf', () => {
 })
 
 describe('freezeWindow', () => {
-  const spec: SketchSpec = { expr: 'A*sin(x)+p', params: { A: [0.2, 3, 1], p: [-5, 5, 0] } }
+  const spec: CanvasSpec = { curves: ['A*sin(x)+p'], params: { A: [0.2, 3, 1], p: [-5, 5, 0] } }
 
   it('covers the amplitude box and the offset box at once', () => {
     const { yMin, yMax } = freezeWindow(spec)
-    // The worst corner is A=3 with p=5, and the engine clips 2% off each tail,
-    // so the held window must reach past 7.5 rather than the raw 8.
     expect(yMin).toBeLessThan(-7.5)
     expect(yMax).toBeGreaterThan(7.5)
   })
 
   it('depends on the declared boxes, not on where the parameters currently rest', () => {
-    const moved = withValues(spec, { A: 3, p: 5 })
-    expect(freezeWindow(moved)).toEqual(freezeWindow(spec))
+    expect(freezeWindow(withValues(spec, { A: 3, p: 5 }))).toEqual(freezeWindow(spec))
   })
 
   it('holds a curve that a live resample would push out of the frame', () => {
     const window = freezeWindow(spec)
-    const dragged = resolveGeometry(withValues(spec, { A: 3, p: 5 }), { frozenYRange: window })
+    const dragged = resolveCanvas(withValues(spec, { A: 3, p: 5 }), { frozenYRange: window })
     const drawn = dragged.curves[0]?.points ?? []
     const offFrame = drawn.filter((point) => point.y !== null && (point.y < window.yMin || point.y > window.yMax))
     expect(offFrame).toHaveLength(0)
   })
 
+  it('honours an explicit y-window instead of fitting one', () => {
+    expect(freezeWindow({ curves: ['sin(x)'], y: [-2, 2] })).toEqual({ yMin: -2, yMax: 2 })
+  })
+
   it('falls back to the engine window for a parameter-free spec', () => {
-    expect(freezeWindow({ expr: 'sin(x)' })).toEqual(resolveGeometry({ expr: 'sin(x)' }).yRange)
+    expect(freezeWindow({ curves: ['sin(x)'] })).toEqual(resolveCanvas({ curves: ['sin(x)'] }).yRange)
   })
 })

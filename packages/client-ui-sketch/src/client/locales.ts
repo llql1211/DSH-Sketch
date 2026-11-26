@@ -24,12 +24,6 @@ export const zh = {
   'card.copy': '复制图片',
   'card.copyHint': '复制图片到剪贴板',
   'card.copied': '已复制',
-  'mode.plain': '单曲线',
-  'mode.compare': '曲线对比',
-  'mode.tangent': '切线',
-  'mode.riemann': '黎曼和',
-  'mode.taylor': '泰勒展开',
-  'mode.data': '数据图表',
 } satisfies Record<string, string>
 
 /** The sketch namespace key union. */
@@ -56,10 +50,4 @@ export const en = {
   'card.copy': 'Copy image',
   'card.copyHint': 'Copy the plot to the clipboard',
   'card.copied': 'Copied',
-  'mode.plain': 'Curve',
-  'mode.compare': 'Comparison',
-  'mode.tangent': 'Tangent',
-  'mode.riemann': 'Riemann sum',
-  'mode.taylor': 'Taylor series',
-  'mode.data': 'Data chart',
 } satisfies Record<SketchKey, string>

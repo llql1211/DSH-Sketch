@@ -109,6 +109,7 @@ const SHEET = `
 .${CLS.canvas} {
   display: block;
   max-width: 100%;
+  margin: 0 auto;
   border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.08));
   border-radius: 8px;
   background: var(--dsw-alias-bg-base, #fff);

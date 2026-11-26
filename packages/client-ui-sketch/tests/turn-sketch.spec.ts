@@ -41,7 +41,7 @@ function resultEvent(callId: string, seq: number, meta: unknown, isError = false
   })
 }
 
-const spec = { expr: 'sin(x)', mode: 'plain' }
+const spec = { curves: ['sin(x)'] }
 
 /**
  * Replay one turn's events through the Definition the way the engine does.
@@ -76,10 +76,10 @@ describe('sketchTurnDefinition', () => {
       callEvent('sketch_function', 'a', 2),
       resultEvent('a', 3, { spec }),
       callEvent('sketch_function', 'b', 4),
-      resultEvent('b', 5, { spec: { expr: 'cos(x)' } }),
+      resultEvent('b', 5, { spec: { curves: ['cos(x)'] } }),
     ])).toEqual([
-      { callId: 'a', seq: 3, spec: { expr: 'sin(x)', mode: 'plain' } },
-      { callId: 'b', seq: 5, spec: { expr: 'cos(x)' } },
+      { callId: 'a', seq: 3, spec: { curves: ['sin(x)'] } },
+      { callId: 'b', seq: 5, spec: { curves: ['cos(x)'] } },
     ])
   })
 
@@ -101,9 +101,9 @@ describe('sketchTurnDefinition', () => {
     expect(replay([
       event('turn/start', 1, { turn: 1 }),
       callEvent('sketch_function', 'a', 2),
-      resultEvent('a', 3, { spec: { expr: 'sin(x)' } }),
-      resultEvent('a', 6, { spec: { expr: 'cos(x)' } }),
-    ])).toEqual([{ callId: 'a', seq: 6, spec: { expr: 'cos(x)' } }])
+      resultEvent('a', 3, { spec: { curves: ['sin(x)'] } }),
+      resultEvent('a', 6, { spec: { curves: ['cos(x)'] } }),
+    ])).toEqual([{ callId: 'a', seq: 6, spec: { curves: ['cos(x)'] } }])
   })
 
   it('keeps the previous publication while nothing moved', () => {

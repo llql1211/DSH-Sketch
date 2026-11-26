@@ -1,43 +1,36 @@
 /**
- * The live plot: one card, one Canvas, drawn from a persisted spec.
+ * The live function canvas: one card, one Canvas, drawn from a persisted spec.
  *
- * Both surfaces that show a graph render this component -- the `sketch_function`
- * toolview row inside the Turn's process, and the completed-Turn tail that
- * carries the same plot as an artifact of the answer. Keeping one implementation
- * is what stops the two from disagreeing about what a spec draws.
+ * Geometry comes from `@aisketch/sketch-core`, the module the Host tool used, so
+ * the picture is derived rather than transported: no live Host call, and a
+ * replayed session renders the identical plot.
  *
- * Geometry comes from `@aisketch/sketch-core`, the module the Host tool used, so the
- * picture is derived rather than transported: no live Host call, and a replayed
- * session renders the identical plot.
- *
- * Interaction -- the sliders and the readout tracer -- is local to this
- * component. The persisted spec keeps the values the call declared, so a reload
- * or a replay rests every slider back where the AI put it and no session event
- * is written.
+ * Interaction -- sliders and the readout tracer -- is local to this component.
+ * The persisted spec keeps the declared values, so a reload or a replay rests
+ * every slider back where the AI put it and no session event is written.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { normalizeMode, resolveGeometry } from '@aisketch/sketch-core'
-import type { Mode, SketchSpec } from '@aisketch/sketch-core'
+import { canvasExpressions, resolveCanvas } from '@aisketch/sketch-core'
+import type { CanvasGeometry, CanvasSpec } from '@aisketch/sketch-core'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   Viewport,
-  categoryCenterX,
   chartPaletteFor,
   drawAxes,
-  drawCartesianChart,
+  drawBars,
   drawCurve,
-  drawPieChart,
+  drawLegend,
+  drawNote,
   drawPoint,
-  drawRiemann,
+  drawVLine,
   squareBounds,
 } from './render.ts'
-import type { ChartPalette, ChartType, Sample, Series } from './render.ts'
+import type { ChartPalette, LegendEntry, Sample } from './render.ts'
 import { readSurfaceColor, useThemeRefresh } from './theme.ts'
 import { NS } from './locales.ts'
-import type { SketchKey } from './locales.ts'
 import { CLS, ensureStyles } from './styles.ts'
 import { compileCurves, freezeWindow, initialValues, stepOf, withValues } from './params.ts'
 import type { ParamValues } from './params.ts'
@@ -45,8 +38,6 @@ import { formatReadout, pickReadout } from './readout.ts'
 import type { ReadoutCurve } from './readout.ts'
 import { copyCanvasAsPng, pngFilename, saveCanvasAsPng } from './save-png.ts'
 
-// The browser half is served as one prebuilt bundle with no CSS-modules
-// pipeline, so the sheet is injected once instead of imported.
 ensureStyles()
 
 /** Card geometry in CSS pixels; the canvas backs itself at device resolution. */
@@ -63,167 +54,126 @@ const SWEEP_STEP = 0.06
 /** One arrow-key step of the tracer, as a fraction of the plot width. */
 const TRACE_KEYS = 200
 
-/** The modes the tracer serves; the annotated modes already mark their own points. */
-const TRACED_MODES: readonly Mode[] = ['plain', 'compare']
-
-/** Sample data for the chart modes, keyed by the spec's `dataset` name. */
-const DATASETS: Record<ChartType, readonly Series[]> = {
-  line: [{ label: 'A', data: [12, 19, 14, 22, 18, 25, 21] }],
-  bar: [
-    { label: '上学期', data: [72, 85, 63, 90, 78] },
-    { label: '下学期', data: [80, 88, 70, 94, 83] },
-  ],
-  scatter: [{ label: '样本', data: [8, 14, 11, 19, 16, 23, 20] }],
-  pie: [{ label: '分布', data: [35, 25, 20, 12, 8] }],
-}
-
-/** Read the chart kind a data-mode spec asked for. */
-function readChartType(spec: SketchSpec): ChartType {
-  const name = spec.data ?? spec.series ?? 'line'
-  return name === 'bar' || name === 'scatter' || name === 'pie' ? name : 'line'
-}
-
 /** Convert core points into the renderer's tuple form. */
 function toSamples(points: readonly { readonly x: number; readonly y: number | null }[]): Sample[] {
   return points.map((p) => [p.x, p.y] as const)
 }
 
 /** The parameter swept by the animation: the first one declared. */
-function leadName(spec: SketchSpec): string | undefined {
+function leadName(spec: CanvasSpec): string | undefined {
   return Object.keys(spec.params ?? {})[0]
 }
 
-/** Draw one frame of geometry into a 2D context. */
+/** Palette color for one curve, falling back to the cycling series palette. */
+function curveColor(index: number, declared: string | undefined, palette: ChartPalette): string {
+  return declared ?? palette.curve[index % palette.curve.length] ?? palette.curve[0]
+}
+
+/** Draw one frame of canvas geometry into a 2D context. */
 function paint(
   ctx: CanvasRenderingContext2D,
-  spec: SketchSpec,
-  geometry: ReturnType<typeof resolveGeometry>,
+  spec: CanvasSpec,
+  geometry: CanvasGeometry,
   vp: Viewport,
   palette: ChartPalette,
 ): void {
-  if (geometry.mode === 'data') {
-    const chart = readChartType(spec)
-    const series = DATASETS[chart]
-    if (chart === 'pie') {
-      drawPieChart(ctx, vp, series, palette)
-    } else {
-      drawCartesianChart(ctx, vp, series, chart, palette)
-      // Category captions, which the chart renderer deliberately leaves to the caller.
-      ctx.fillStyle = palette.text
-      ctx.font = '11px system-ui, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'top'
-      const labels = series[0]?.data.map((_, i) => `类别 ${i + 1}`) ?? []
-      labels.forEach((label, i) => {
-        ctx.fillText(label, categoryCenterX(vp, i, labels.length), HEIGHT - 22)
-      })
-    }
-    return
-  }
-
   drawAxes(ctx, vp, palette)
 
+  for (const mark of geometry.marks) {
+    if (mark.type === 'area') drawBars(ctx, vp, mark.bars, mark.a, mark.b, palette)
+  }
+
   geometry.curves.forEach((curve, i) => {
-    drawCurve(ctx, vp, toSamples(curve.points), palette.curve[i % palette.curve.length] ?? palette.curve[0])
+    drawCurve(ctx, vp, toSamples(curve.points), curveColor(i, curve.color, palette), curve.width, curve.dash)
   })
 
-  const tangent = geometry.tangent
-  if (tangent !== undefined) {
-    const span = geometry.xRange[1] - geometry.xRange[0]
-    const left = tangent.x - span
-    const right = tangent.x + span
-    drawCurve(
-      ctx,
-      vp,
-      [
-        [left, tangent.y + tangent.slope * (left - tangent.x)],
-        [right, tangent.y + tangent.slope * (right - tangent.x)],
-      ],
-      palette.tangent,
-      1.5,
-      [6, 4],
-    )
-    drawPoint(ctx, vp, tangent.x, tangent.y, `f'(x)=${tangent.slope.toFixed(3)}`, palette.point)
-  }
-
-  const riemann = geometry.riemann
-  if (riemann !== undefined) {
-    const curve = geometry.curves[0]
-    if (curve !== undefined) {
-      const lookup = new Map<number, number>()
-      for (const p of curve.points) if (p.y !== null) lookup.set(p.x, p.y)
-      const width = geometry.xRange[1] - geometry.xRange[0]
-      const sampleAt = (x: number): number => {
-        // Nearest-sample lookup: the bars only need midpoints, which are
-        // already dense at this sampling rate.
-        let best = Number.NaN
-        let bestDistance = Number.POSITIVE_INFINITY
-        for (const [sx, sy] of lookup) {
-          const d = Math.abs(sx - x)
-          if (d < bestDistance) {
-            bestDistance = d
-            best = sy
-          }
-        }
-        return bestDistance <= width / 200 ? best : Number.NaN
+  for (const mark of geometry.marks) {
+    if (mark.type === 'area') continue
+    if (mark.type === 'vline') {
+      const color = mark.color ?? palette.curve[0]
+      drawVLine(ctx, vp, mark.x, mark.y0, mark.y1, color, mark.dash, mark.width)
+      if (mark.label !== undefined) {
+        drawNote(ctx, vp, {
+          x: mark.x, y: mark.y1, text: mark.label,
+          dx: 5, dy: -4, color, dot: false,
+        })
       }
-      drawRiemann(ctx, vp, sampleAt, riemann.a, riemann.b, riemann.n, palette)
+      continue
     }
+    if (mark.type === 'tangent') {
+      const span = geometry.xRange[1] - geometry.xRange[0]
+      const left = mark.x - span
+      const right = mark.x + span
+      drawCurve(
+        ctx,
+        vp,
+        [
+          [left, mark.y + mark.slope * (left - mark.x)],
+          [right, mark.y + mark.slope * (right - mark.x)],
+        ],
+        palette.tangent,
+        1.5,
+        [6, 4],
+      )
+      drawNote(ctx, vp, {
+        x: mark.x, y: mark.y, text: `f'(x)=${mark.slope.toFixed(3)}`,
+        dx: 8, dy: -6, color: palette.point, dot: true,
+      })
+      continue
+    }
+    if (mark.type === 'poly') {
+      drawCurve(ctx, vp, toSamples(mark.points), palette.curve[2] ?? palette.curve[0], 2, [5, 4])
+      drawPoint(ctx, vp, mark.center, mark.coefficients[0] ?? 0, undefined, palette.point)
+      continue
+    }
+    drawNote(ctx, vp, {
+      x: mark.x,
+      y: mark.y,
+      text: mark.text,
+      dx: mark.dx,
+      dy: mark.dy,
+      color: mark.color ?? palette.point,
+      dot: mark.type === 'point',
+    })
   }
 
-  const taylor = geometry.taylor
-  if (taylor !== undefined) {
-    drawCurve(ctx, vp, toSamples(taylor.points), palette.curve[2] ?? palette.curve[0], 2, [5, 4])
-    drawPoint(ctx, vp, taylor.center, taylor.coefficients[0] ?? 0, undefined, palette.point)
-  }
-}
-
-/** Label for the mode chip. */
-function modeLabel(mode: Mode, t: (key: SketchKey) => string): string {
-  return t(`mode.${mode}` as SketchKey)
-}
-
-/** Cursor position in canvas pixels, corrected for a card scaled below its design width. */
-function canvasOffset(element: HTMLCanvasElement, clientX: number, clientY: number, width: number, height: number): { px: number; py: number } {
-  const rect = element.getBoundingClientRect()
-  return {
-    px: ((clientX - rect.left) * width) / rect.width,
-    py: ((clientY - rect.top) * height) / rect.height,
+  if (spec.legend !== false) {
+    const entries: LegendEntry[] = []
+    geometry.curves.forEach((curve, i) => {
+      if (curve.label === undefined) return
+      entries.push({
+        label: curve.label,
+        color: curveColor(i, curve.color, palette),
+        dash: curve.dash,
+        width: curve.width,
+      })
+    })
+    for (const mark of geometry.marks) {
+      if (mark.type !== 'poly') continue
+      entries.push({ label: mark.label, color: palette.curve[2] ?? palette.curve[0], dash: [5, 4], width: 2 })
+    }
+    drawLegend(ctx, vp, entries, palette)
   }
 }
 
 /** A spec plus the localized copy seat. */
-export type SketchFigureProps = { readonly spec: SketchSpec } & PropsLocale<typeof NS>
+export type SketchFigureProps = { readonly spec: CanvasSpec } & PropsLocale<typeof NS>
 
-/** One plot surface: the head row, the Canvas with its readout tracer, and the sliders. */
+/** One plot surface: the head row, the Canvas with its readout tracer, and sliders. */
 interface SketchPlotProps extends SketchFigureProps {
-  /** Canvas width in CSS pixels. */
   readonly width: number
-  /** Canvas height in CSS pixels. */
   readonly height: number
-  /** Whether one pixel covers equal x/y units, set by the card's toggle. */
   readonly equalAspect: boolean
-  /** Change the equal-aspect view; shared by the card and its overlay. */
   readonly onEqualAspectChange: (value: boolean) => void
-  /** Show the expand control; absent on the overlay's own plot. */
   readonly onExpand?: (() => void) | undefined
-  /** Show the close control; only the overlay's plot has one. */
   readonly onClose?: (() => void) | undefined
 }
 
-/**
- * Render one spec as a live plot: the head row, the Canvas with its readout
- * tracer, and one slider per declared parameter.
- * @param props - the persisted spec, the `sketch` dictionary, and the surface size.
- * @returns the card.
- */
+/** Render one canvas spec as a live plot. */
 function SketchPlot({ spec, t, width, height, equalAspect, onEqualAspectChange, onExpand, onClose }: SketchPlotProps) {
   const canvas = useRef<HTMLCanvasElement | null>(null)
-  // A light/dark switch changes no prop here; the hook supplies a repaint trigger.
   const themeRefresh = useThemeRefresh()
 
-  // Interaction state is local by decision: the spec keeps the declared values,
-  // so nothing here survives a reload or reaches the session log.
   const [values, setValues] = useState<ParamValues>(() => initialValues(spec))
   const [playing, setPlaying] = useState(false)
   const [cursor, setCursor] = useState<{ px: number; py: number } | null>(null)
@@ -231,11 +181,10 @@ function SketchPlot({ spec, t, width, height, equalAspect, onEqualAspectChange, 
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<number | null>(null)
 
-  const mode = useMemo(() => normalizeMode(spec.mode), [spec.mode])
   const params = Object.entries(spec.params ?? {})
   const lead = leadName(spec)
+  const title = canvasExpressions(spec)[0] ?? t('card.title')
 
-  // A new call, expression, or parameter set restarts from the declared values.
   useEffect(() => {
     setPlaying(false)
     setPinned(false)
@@ -243,12 +192,10 @@ function SketchPlot({ spec, t, width, height, equalAspect, onEqualAspectChange, 
     setValues(initialValues(spec))
   }, [spec])
 
-  // Cancel a pending "copied" reset so a timer never writes into a gone card.
   useEffect(() => () => {
     if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
   }, [])
 
-  /** Copy the current picture to the clipboard from the card's button. */
   const copy = useCallback(() => {
     const element = canvas.current
     if (element === null) return
@@ -260,28 +207,24 @@ function SketchPlot({ spec, t, width, height, equalAspect, onEqualAspectChange, 
     })
   }, [])
 
-  // The held y-window covers every corner of the parameter box, so dragging any
-  // slider changes the curve and never the axes.
+  // Held over every corner of the parameter box, so dragging any slider changes
+  // the curves and never the axes. An explicit y-window in the spec wins.
   const frozenY = useMemo(() => freezeWindow(spec), [spec])
 
   const geometry = useMemo(
-    () => resolveGeometry(withValues(spec, values), { frozenYRange: frozenY }),
+    () => resolveCanvas(withValues(spec, values), { frozenYRange: frozenY }),
     [spec, values, frozenY],
   )
 
-  // One compile per expression, reused by every tracer move. Comparison lines
-  // carry a "label, expr" prefix, so `compileCurves` splits before compiling --
-  // compiling the raw line took the whole card down once.
   const evaluators = useMemo(() => compileCurves(spec), [spec])
 
   const viewport = useMemo(() => {
     const [x0, x1, y0, y1] = equalAspect
-      ? squareBounds(geometry.xRange[0], geometry.xRange[1], frozenY.yMin, frozenY.yMax, width, height)
-      : [geometry.xRange[0], geometry.xRange[1], frozenY.yMin, frozenY.yMax]
+      ? squareBounds(geometry.xRange[0], geometry.xRange[1], geometry.yRange.yMin, geometry.yRange.yMax, width, height)
+      : [geometry.xRange[0], geometry.xRange[1], geometry.yRange.yMin, geometry.yRange.yMax]
     return new Viewport(x0 as number, x1 as number, y0 as number, y1 as number).fit(width, height)
-  }, [geometry.xRange, frozenY, width, height, equalAspect])
+  }, [geometry.xRange, geometry.yRange, width, height, equalAspect])
 
-  // Draw whenever the geometry, the tracer or the host theme moves.
   useEffect(() => {
     const element = canvas.current
     if (element === null) return
@@ -291,23 +234,20 @@ function SketchPlot({ spec, t, width, height, equalAspect, onEqualAspectChange, 
     const ctx = element.getContext('2d')
     if (ctx === null) return
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
-    // Read the painted surface, not a theme class, so the ink always matches
-    // the pixels the browser put behind the canvas.
     const palette = chartPaletteFor(readSurfaceColor(element))
     paint(ctx, spec, geometry, viewport, palette)
-    if (cursor === null || !TRACED_MODES.includes(mode)) return
+    if (cursor === null) return
     const curves: ReadoutCurve[] = geometry.curves.flatMap((curve) => {
       const fn = evaluators.get(curve.expr)
       const index = geometry.curves.indexOf(curve)
-      return fn === undefined ? [] : [{ fn, color: palette.curve[index % palette.curve.length] ?? palette.curve[0] }]
+      return fn === undefined ? [] : [{ fn, color: curveColor(index, curve.color, palette) }]
     })
     const point = pickReadout({ px: cursor.px, py: cursor.py, vp: viewport, curves, values })
     if (point !== null) {
       drawPoint(ctx, viewport, point.x, point.y, `(${formatReadout(point.x)}, ${formatReadout(point.y)})`, point.color)
     }
-  }, [spec, geometry, viewport, cursor, mode, evaluators, values, width, height, themeRefresh])
-  // The sweep timer advances the lead parameter and writes through the same
-  // state the slider reads, so the handle follows the animation.
+  }, [spec, geometry, viewport, cursor, evaluators, values, width, height, themeRefresh])
+
   useEffect(() => {
     if (!playing || lead === undefined) return
     const tuple = spec.params?.[lead]
@@ -335,7 +275,11 @@ function SketchPlot({ spec, t, width, height, equalAspect, onEqualAspectChange, 
   const traceTo = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
     const element = canvas.current
     if (element === null) return
-    setCursor(canvasOffset(element, event.clientX, event.clientY, width, height))
+    const rect = element.getBoundingClientRect()
+    setCursor({
+      px: ((event.clientX - rect.left) * width) / rect.width,
+      py: ((event.clientY - rect.top) * height) / rect.height,
+    })
   }, [width, height])
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLCanvasElement>): void => {
@@ -355,35 +299,22 @@ function SketchPlot({ spec, t, width, height, equalAspect, onEqualAspectChange, 
   return (
     <div className={CLS.card} data-tool="sketch_function" data-state="ok">
       <div className={CLS.head}>
-        <span className={CLS.title}>{spec.expr}</span>
-        <span className={CLS.chip}>{modeLabel(mode, t)}</span>
-        {mode === 'data' ? null : (
-          <label className={CLS.aspect}>
-            <input
-              type="checkbox"
-              checked={equalAspect}
-              onChange={(event) => onEqualAspectChange(event.currentTarget.checked)}
-            />
-            {t('card.equalAspect')}
-          </label>
-        )}
+        <span className={CLS.title}>{title}</span>
+        <label className={CLS.aspect}>
+          <input
+            type="checkbox"
+            checked={equalAspect}
+            onChange={(event) => onEqualAspectChange(event.currentTarget.checked)}
+          />
+          {t('card.equalAspect')}
+        </label>
         <span className={CLS.actions}>
           {lead !== undefined && (
-            <button
-              type="button"
-              className={CLS.action}
-              onClick={() => setPlaying((value) => !value)}
-            >
+            <button type="button" className={CLS.action} onClick={() => setPlaying((value) => !value)}>
               {playing ? t('card.pause') : t('card.animate')}
             </button>
           )}
-          <button
-            type="button"
-            className={CLS.action}
-            aria-label={t('card.copyHint')}
-            title={t('card.copyHint')}
-            onClick={copy}
-          >
+          <button type="button" className={CLS.action} aria-label={t('card.copyHint')} title={t('card.copyHint')} onClick={copy}>
             ⧉ {copied ? t('card.copied') : t('card.copy')}
           </button>
           <button
@@ -393,30 +324,18 @@ function SketchPlot({ spec, t, width, height, equalAspect, onEqualAspectChange, 
             title={t('card.saveHint')}
             onClick={() => {
               const element = canvas.current
-              if (element !== null) saveCanvasAsPng(element, pngFilename(spec.expr))
+              if (element !== null) saveCanvasAsPng(element, pngFilename(title))
             }}
           >
             ⇩ {t('card.save')}
           </button>
           {onExpand === undefined ? null : (
-            <button
-              type="button"
-              className={CLS.action}
-              onClick={onExpand}
-              aria-label={t('card.expand')}
-              title={t('card.expand')}
-            >
+            <button type="button" className={CLS.action} onClick={onExpand} aria-label={t('card.expand')} title={t('card.expand')}>
               ⤢
             </button>
           )}
           {onClose === undefined ? null : (
-            <button
-              type="button"
-              className={CLS.action}
-              onClick={onClose}
-              aria-label={t('card.close')}
-              title={t('card.close')}
-            >
+            <button type="button" className={CLS.action} onClick={onClose} aria-label={t('card.close')} title={t('card.close')}>
               ✕
             </button>
           )}
@@ -428,7 +347,7 @@ function SketchPlot({ spec, t, width, height, equalAspect, onEqualAspectChange, 
         style={{ width: `${width}px`, height: `${height}px` }}
         role="img"
         tabIndex={0}
-        aria-label={spec.expr}
+        aria-label={title}
         title={t('card.readoutHint')}
         onPointerMove={traceTo}
         onPointerDown={(event) => {
@@ -473,21 +392,9 @@ function SketchPlot({ spec, t, width, height, equalAspect, onEqualAspectChange, 
   )
 }
 
-/**
- * The plot card and its expand overlay.
- *
- * Expanding draws the plot again at a larger canvas instead of moving the
- * mounted card: a portal keeps the overlay above the chat's scroll containers,
- * and the copy starts from the declared parameter values, which is the only
- * state the spec owns.
- * @param props - the persisted spec and the `sketch` dictionary.
- * @returns the card plus, once expanded, its larger copy.
- */
+/** The plot card and its expand overlay. */
 export function SketchFigure({ spec, t }: SketchFigureProps) {
   const [expanded, setExpanded] = useState(false)
-  // A pure view setting, so it lives here rather than in the spec and is shared
-  // by the card and its expanded copy (unlike slider values, which the overlay
-  // deliberately restarts from the spec).
   const [equalAspect, setEqualAspect] = useState(false)
   useEffect(() => {
     if (!expanded) return
@@ -515,7 +422,7 @@ export function SketchFigure({ spec, t }: SketchFigureProps) {
               className={CLS.dialog}
               role="dialog"
               aria-modal="true"
-              aria-label={spec.expr}
+              aria-label={canvasExpressions(spec)[0]}
               onClick={(event) => event.stopPropagation()}
             >
               <SketchPlot

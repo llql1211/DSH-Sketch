@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { COLORS, Viewport, drawAxes, drawCurve, drawPieChart, drawRiemann, squareBounds } from '../src/client/render.ts'
+import { COLORS, Viewport, drawAxes, drawBars, drawCurve, drawLegend, drawNote, drawVLine, squareBounds } from '../src/client/render.ts'
 import type { Sample } from '../src/client/render.ts'
 
 /** One recorded context call. */
@@ -116,23 +116,21 @@ describe('drawCurve', () => {
   })
 })
 
-describe('drawRiemann', () => {
-  it('draws one rectangle per subinterval', () => {
+describe('drawBars', () => {
+  it('draws one rectangle per bar, using the heights the sum used', () => {
     const ctx = stubContext()
-    const vp = new Viewport(0, Math.PI, 0, 1).fit(620, 380)
-    drawRiemann(ctx, vp, (x) => Math.sin(x), 0, Math.PI, 15)
-    // fillRect per bar; the thin edge stroke is also emitted for n <= 40.
-    const rects = callsOf(ctx, 'fillRect')
-    const edges = callsOf(ctx, 'strokeRect')
-    expect(rects).toHaveLength(15)
-    expect(edges).toHaveLength(15)
+    const vp = new Viewport(0, 1, 0, 1).fit(620, 380)
+    const bars = Array.from({ length: 15 }, (_, i) => [i / 15, 0.5] as const)
+    drawBars(ctx, vp, bars, 0, 1)
+    expect(callsOf(ctx, 'fillRect')).toHaveLength(15)
+    expect(callsOf(ctx, 'strokeRect')).toHaveLength(15)
   })
 
   it('skips bars whose height is not finite', () => {
     const ctx = stubContext()
     const vp = new Viewport(0, 1, 0, 1).fit(620, 380)
-    drawRiemann(ctx, vp, () => Number.NaN, 0, 1, 4)
-    expect(callsOf(ctx, 'fillRect')).toHaveLength(0)
+    drawBars(ctx, vp, [[0, Number.NaN], [0.5, 0.2]], 0, 1)
+    expect(callsOf(ctx, 'fillRect')).toHaveLength(1)
   })
 })
 
@@ -157,16 +155,43 @@ describe('squareBounds', () => {
   })
 })
 
-describe('drawPieChart', () => {
-  it('draws one slice per datum and skips an all-zero series', () => {
+describe('drawVLine', () => {
+  it('strokes one finite segment and honours its dash', () => {
+    const ctx = stubContext()
+    const vp = new Viewport(0, 2, 0, 2).fit(200, 200)
+    drawVLine(ctx, vp, 1, 0, 1.5, '#00bcd4', [6, 4], 3)
+    expect(callsOf(ctx, 'moveTo')).toHaveLength(1)
+    expect(callsOf(ctx, 'lineTo')).toHaveLength(1)
+    expect(callsOf(ctx, 'stroke')).toHaveLength(1)
+    expect(callsOf(ctx, 'setLineDash').map((call) => call.args[0])).toContainEqual([6, 4])
+  })
+})
+
+describe('canvas annotations', () => {
+  it('draws a dot and a caption for a point note', () => {
     const ctx = stubContext()
     const vp = new Viewport(0, 1, 0, 1).fit(620, 380)
-    drawPieChart(ctx, vp, [{ label: 'x', data: [30, 20, 50] }])
-    // Each slice is a moveTo + arc + closePath + fill.
-    expect(callsOf(ctx, 'arc')).toHaveLength(3)
+    drawNote(ctx, vp, { x: 0.5, y: 0.5, text: '原点', dx: 8, dy: -6, color: '#E24B4A', dot: true })
+    expect(callsOf(ctx, 'arc')).toHaveLength(1)
+    expect(callsOf(ctx, 'fillText')).toHaveLength(1)
+  })
 
-    const empty = stubContext()
-    drawPieChart(empty, vp, [{ label: 'x', data: [0, 0] }])
-    expect(callsOf(empty, 'arc')).toHaveLength(0)
+  it('draws text only for a floating note', () => {
+    const ctx = stubContext()
+    const vp = new Viewport(0, 1, 0, 1).fit(620, 380)
+    drawNote(ctx, vp, { x: 0.5, y: 0.5, text: '注释', dx: 0, dy: 0, color: '#E24B4A', dot: false })
+    expect(callsOf(ctx, 'arc')).toHaveLength(0)
+    expect(callsOf(ctx, 'fillText')).toHaveLength(1)
+  })
+
+  it('draws a legend swatch per labelled curve', () => {
+    const ctx = stubContext()
+    const vp = new Viewport(0, 1, 0, 1).fit(620, 380)
+    drawLegend(ctx, vp, [
+      { label: 'sin', color: '#378ADD', dash: [], width: 2 },
+      { label: 'cos', color: '#1D9E75', dash: [6, 4], width: 2 },
+    ])
+    expect(callsOf(ctx, 'fillText')).toHaveLength(2)
+    expect(callsOf(ctx, 'stroke')).toHaveLength(2)
   })
 })
