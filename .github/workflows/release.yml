@@ -1,0 +1,51 @@
+name: Fork Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*[+]fork.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的 fork 标签，如 v0.3.0+fork.1'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出标签对应提交
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
+      - name: 从 FORK_CHANGELOG 提取本版本说明
+        id: notes
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          awk -v tag="$TAG" '
+            index($0, "## " tag) == 1 { found=1; next }
+            found && /^## / { exit }
+            found { print }
+          ' docs/FORK_CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "::error::docs/FORK_CHANGELOG.md 中没有 $TAG 对应的章节"
+            exit 1
+          fi
+
+      - name: 创建或更新 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file release-notes.md
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file release-notes.md --verify-tag
+          fi
