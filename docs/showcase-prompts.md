@@ -2,16 +2,15 @@
 
 这些提示词用于生成 `docs/assets/screenshots/` 里的卡片。它们刻意把工具和参数写死，避免模型改用 Markdown、ASCII 或写文件。
 
-## 1. sketch_function 六模式
+## 1. sketch_function 函数画布与 chart 卡片
 
-> 只依次调用 sketch_function 六次，每次一张卡，不要调用其他工具、不要写文件、不要额外讲解：
-> 1) `expr="sin(x)"`；
-> 2) `expr="x^2", mode="compare", curves=["2x"]`；
-> 3) `expr="x^2", mode="tangent", probe=1`；
-> 4) `expr="sin(x)", mode="riemann", a=0, b=3.141592653589793, n=12`；
-> 5) `expr="exp(x)", mode="taylor", order=5, center=0`；
-> 6) `expr="sample", mode="data", dataset="bar"`。
-> 六次调用按顺序给出，最终回复只写「已完成」。
+> 只依次调用工具五次，每次一张卡，不要调用其他工具、不要写文件、不要额外讲解：
+> 1) `sketch_function`, `expr="sin(x)"`；
+> 2) `sketch_function`, `curves=["sin(x)",{"expr":"cos(x)","color":"red","dash":"dashed","label":"cos"}]`；
+> 3) `sketch_function`, `expr="x^2", marks=[{"type":"tangent","x":1},{"type":"area","a":0,"b":1,"n":12}]`；
+> 4) `sketch_function`, `expr="exp(x)", marks=[{"type":"poly","center":0,"order":5}]`；
+> 5) `show_card`, `kind="chart", title="成绩对比", payload={"type":"bar","series":[{"label":"上学期","data":[72,85,63,90,78]},{"label":"下学期","data":[80,88,70,94,83]}],"categories":["语文","数学","英语","物理","化学"]}`。
+> 五次调用按顺序给出，最终回复只写「已完成」。
 
 ## 2. table + flowchart
 

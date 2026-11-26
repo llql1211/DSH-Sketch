@@ -50,7 +50,7 @@
 |---|---|---|
 | 卡片怎么来 | 每个内置工具自己的卡片模型（read / grep / diff / terminal / web / image …），渲染器写死在客户端 | **一条通用通道**：模型自选内容，`kind` 决定用哪个渲染器；加一种卡片 = 注册一个组件 |
 | 交付物 | `present`：把**已有文件**声明为最终交付物，只记路径不搬内容 | 把**结构化内容本身**交付到会话里，不需要先落盘 |
-| 图表/流程图 | 官方工具目录里没有通用绘图、图表、流程图工具 | 表格、流程图、手绘、教学示意图、六种函数图 |
+| 图表/流程图 | 官方工具目录里没有通用绘图、图表、流程图工具 | 流程图、手绘、教学示意图、函数画布、数据图表 |
 | 可见性 | 工具调用属于「回合过程」，会被工作步骤展示模式折叠 | 卡片同时挂 `turnTail` 产出物槽位（详见「已知限制」） |
 
 ---
@@ -119,31 +119,53 @@
   <img src="docs/assets/screenshots/figure-atom-na.png" width="49%" alt="Na 原子壳层" />
 </p>
 
-### 5. `sketch_function` → 六种模式
+### 5. `sketch_function` → 函数画布
 
-| 模式 | 画什么 |
-|---|---|
-| `plain` | 单曲线，y 轴按表达式自适应 |
-| `compare` | 多曲线对比（共享窗口，各自独立采样） |
-| `tangent` | 指定点的切线（数值微分） |
-| `riemann` | n 个矩形逼近定积分 |
-| `taylor` | 泰勒展开到 n 阶（展开点可选） |
-| `data` | 折线 / 柱状 / 散点 / 饼图 |
+不再有 mode：一张画布就是**窗口 + 曲线列表 + 可选标注**。曲线都是 `y=f(x)`，1 条到 8 条随便给；每条可以是裸表达式，也可以是带样式的对象：
+
+```json
+{
+  "curves": ["sin(x)", { "expr": "cos(x)", "color": "red", "dash": "dashed", "width": 3, "label": "cos" }],
+  "x": [-6.28, 6.28], "y": [-2, 2],
+  "params": { "A": [0.2, 2, 1] },
+  "marks": [{ "type": "tangent", "curve": 0, "x": 1 }],
+  "legend": true
+}
+```
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `x` / `y` | 自动拟合 | 横/纵轴窗口；也可用 `x_min/x_max/y_min/y_max` |
+| `curves` | 必填 | 裸字符串或 `{expr,color,dash,width,label}` |
+| `color` | 调色板轮换 | 命名色或 `#rgb`/`#rrggbb` |
+| `dash` | `solid` | `solid` / `dashed` / `dotted`，固定节奏由引擎决定 |
+| `width` | 2 | 线宽，0.5–6 |
+| `label` | 无 | 有标签即画图例，`legend:false` 可关 |
+| `params` | 无 | 画布级滑块，从所有曲线收集参数 |
+| `marks` | 空 | 可叠加的辅助层 |
+
+`marks` 六种：`tangent`（切线）、`area`（矩形逼近定积分）、`poly`（泰勒多项式）、`vline`（有限长竖线，`y1` 默认取 `f(x)`、`y0` 默认 0，可带数值标签）、`point`（数据点 + 文字）、`text`（浮动注释）。它们可以任意组合在同一张画布上；工具摘要会回报斜率、积分和与误差、展开系数。例如青色读数竖线：`{"type":"vline","x":1,"label":"0.632","color":"cyan"}`。
 
 <p>
   <img src="docs/assets/screenshots/sketch-single.png" width="49%" alt="单曲线" />
-  <img src="docs/assets/screenshots/sketch-compare.png" width="49%" alt="曲线对比" />
-</p>
-<p>
-  <img src="docs/assets/screenshots/sketch-tangent.png" width="49%" alt="切线" />
-  <img src="docs/assets/screenshots/sketch-riemann.png" width="49%" alt="黎曼和" />
-</p>
-<p>
-  <img src="docs/assets/screenshots/sketch-taylor.png" width="49%" alt="泰勒展开" />
-  <img src="docs/assets/screenshots/sketch-data.png" width="49%" alt="数据图表" />
+  <img src="docs/assets/screenshots/sketch-compare.png" width="49%" alt="多曲线与图例" />
 </p>
 
-带 `params` 时出参数滑块；拖拽期间 y 窗口冻结，另有追踪读数（悬停、点按钉住、键盘步进）。交互态全部在组件本地，不写回 spec、不发 Host 调用。
+带 `params` 时出参数滑块；拖拽期间 y 窗口冻结，追踪读数对所有曲线生效（悬停、点按钉住、键盘步进）。交互态全部在组件本地，不写回 spec、不发 Host 调用。旧围栏（`expr` + `compare` + `mode`）由统一适配层升级为画布；显式 `data`/`dataset` 的围栏会被拒绝，不再画成无关的函数线。
+
+### 6. `show_card` → `chart` 数据图表
+
+数据图表不是函数：折线 / 柱状 / 散点 / 饼图改由 `show_card` 的 `chart` kind 承载，传真实数据而非内置示例：
+
+```json
+{
+  "kind": "chart", "type": "bar",
+  "series": [{ "label": "上学期", "data": [72, 85, 63, 90, 78] }],
+  "categories": ["语文", "数学", "英语", "物理", "化学"]
+}
+```
+
+≤8 个系列、每系列 ≤24 个值、≤24 个类别；饼图只用第一个系列。数值轴含零基线与 nice step 刻度，类别标签与图例由渲染器画出。
 
 ---
 
@@ -219,7 +241,7 @@ dsh --profile <profile> --dump-config    # 应见 4 行 insert
 
 ## 六、质量与验收
 
-- **539 例**单元/集成测试（cards-core 194 / client-ui-cards 170 / sketch-core 58 / cards-tool 52 / client-ui-sketch 37 / sketch-tool 28），六个包 `tsc --noEmit` 全清。
+- **680 例**单元/集成测试（cards-core 233 / client-ui-cards 218 / sketch-core 78 / cards-tool 60 / client-ui-sketch 57 / sketch-tool 34），六个包 `tsc --noEmit` 全清。
 - 真机验收不是「没报错」：函数图 canvas 像素回读（曲线/坐标轴非零）；流程图截图读到胶囊起点、菱形判断、是/否分支与汇合箭头；电子排布图逐项核对轨道数、电子数与洪特规则；渐变/模糊读渲染后的 DOM（`linearGradient` 停点、`stroke-dasharray`、`filter`）而不是只看截图。
 - 回归钉：wiring 闸门（少注册一张脸即红）、`turnTail` 发布键必须等于 Definition 的 kind、draw 的 draft/final 过滤、虚线只能落在描边型笔上、渐变角度按 CSS 约定。
 

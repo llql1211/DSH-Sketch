@@ -24,6 +24,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 说明：新版本将命名为 0.1.0+upstream.0.3.0
 
+### Added
+
+- `sketch_function` 改为函数画布：1–8 条 `y=f(x)` 曲线共享窗口，支持显式 x/y 范围、逐曲线颜色/实线虚线/粗细/标签与图例、画布级参数滑块
+- 画布新增可叠加的辅助层 `marks`：切线、面积、泰勒多项式、有限长竖线（`vline`，默认从 y=0 到 f(x)，可带数值标签）、数据点注释与文本注释，同一张图可同时画多个；工具摘要回报斜率、积分误差与展开系数
+- `show_card` 新增 `chart` kind：折线/柱状/散点/饼图接受真实 `series` 与 `categories`，纯函数渲染并支持明暗主题
+
+### Changed
+
+- 曲线定义域直接用 x 窗口表达，不再为表达式定义域或隐式曲线 `f(x,y)=0` 增加语法；旧 `expr`/`compare`/`mode` 围栏由统一适配层升级为画布 spec
+- 虚线只开放 `solid`/`dashed`/`dotted` 预设，避免模型写出人眼无法区分的任意虚线数组
+
+### Removed
+
+- 移除 `sketch_function` 的六种 mode 与写死示例数据的 `data` 模式；含 `data`/`dataset` 的旧围栏不再静默降级成函数线，而是明确返回空状态
+
 ### Fixed
 
 - 修复对比曲线标签解析不一致：工具预检改用出图引擎同一个 `splitCurveLine`，带括号/运算符的标签或中文冒号标签不再被静默丢弃，而是报出可操作的错误；摘要也不再列出没有采样点的曲线，并在参数说明中写明标签约束
