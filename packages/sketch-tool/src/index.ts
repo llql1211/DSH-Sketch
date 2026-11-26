@@ -32,6 +32,7 @@ import {
   freeVariables,
   normalizeMode,
   resolveGeometry,
+  splitCurveLine,
 } from '@aisketch/sketch-core'
 import type { Mode, SketchSpec } from '@aisketch/sketch-core'
 
@@ -121,6 +122,26 @@ function validateArgs(args: SketchArgs): void {
 }
 
 /**
+ * Compile one expression, returning a model-readable error detail or null.
+ *
+ * Both the primary expression and each comparison line are checked with this
+ * helper so a syntax error always carries its offset, whichever line it came
+ * from.
+ * @param expr - expression text.
+ * @returns the error detail, or null when the expression compiles.
+ */
+function compileError(expr: string): string | null {
+  try {
+    build(expr)
+    return null
+  } catch (error) {
+    return error instanceof ParseError
+      ? `${error.message} (at offset ${error.index})`
+      : error instanceof Error ? error.message : String(error)
+  }
+}
+
+/**
  * Turn the model's arguments into the canonical spec the card renders.
  *
  * Parameters the expression does not actually use are dropped rather than
@@ -194,11 +215,18 @@ function summarize(spec: SketchSpec, mode: Mode, geometry: ReturnType<typeof res
 
   lines.push(`Drew ${spec.expr}${paramText.length > 0 ? ` with ${paramText}` : ''} (${window}, ${yWindow}).`)
 
-  if (geometry.curves.length > 1) {
-    const labels = geometry.curves
+  // Only name curves that actually have samples: a broken comparison line must
+  // not be advertised as drawn just because it has an entry in the geometry.
+  const drawn = geometry.curves.filter((c) => c.points.length > 0)
+  if (drawn.length > 1) {
+    const labels = drawn
       .map((c) => c.label ?? c.expr)
       .join(', ')
     lines.push(`Curves: ${labels}.`)
+  }
+  const skipped = geometry.curves.length - drawn.length
+  if (skipped > 0) {
+    lines.push(`Warning: ${skipped} comparison curve(s) could not be drawn and were skipped.`)
   }
 
   const tangent = geometry.tangent
@@ -320,7 +348,9 @@ export function apply(ctx: Context): void {
         type: 'array',
         description:
           'Extra curves for the compare mode, each "label, expr" or just "expr". '
-          + 'Example: ["抛物线, x^2", "直线, 2x"]. `expr` is drawn alongside them.',
+          + 'The separator must be a plain comma, not a colon; a label may contain spaces, letters and Chinese '
+          + 'but no parentheses or arithmetic operators ()+-*/^, which would make the whole line read as an '
+          + 'expression and fail. Examples: ["fast, 1 - exp(-4x)", "1 - exp(-4x)"]. `expr` is drawn alongside them.',
       },
       probe: { type: 'number', description: 'Tangent mode: where to draw the tangent line. Defaults to the window centre.' },
       a: { type: 'number', description: 'Area mode: lower bound of the interval. Defaults to 0.' },
@@ -358,17 +388,22 @@ export function apply(ctx: Context): void {
 
       const spec = toSpec(args)
       // Parse before rendering so a typo surfaces as a tool error the model can
-      // correct, rather than as a silently blank card.
-      try {
-        build(spec.expr)
-        for (const line of spec.compare ?? []) {
-          build(line.replace(/^[^,]*,\s*/, '').replace(/^y\s*=\s*/i, ''))
+      // correct, rather than as a silently blank card. Comparison lines go
+      // through the same splitter the geometry engine uses: a private regex
+      // here used to accept a label the card then refused, leaving a curve
+      // with zero points and only the primary line visible.
+      const exprError = compileError(spec.expr)
+      if (exprError !== null) throw new Error(`cannot parse expression: ${exprError}`)
+      for (const line of spec.compare ?? []) {
+        const { expr } = splitCurveLine(line)
+        const lineError = compileError(expr)
+        if (lineError !== null) {
+          throw new Error(
+            `cannot parse comparison curve "${line}": ${lineError}. `
+            + 'Use a plain comma in "label, expr" and keep parentheses and operators out of the label, '
+            + 'or pass just the expression.',
+          )
         }
-      } catch (error) {
-        const detail = error instanceof ParseError
-          ? `${error.message} (at offset ${error.index})`
-          : error instanceof Error ? error.message : String(error)
-        throw new Error(`cannot parse expression: ${detail}`)
       }
 
       const mode = normalizeMode(spec.mode)

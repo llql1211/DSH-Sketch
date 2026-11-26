@@ -174,6 +174,18 @@ describe('modes', () => {
     expect(textOf(result.content)).toContain('抛物线, 直线')
   })
 
+  it('accepts a bare comparison expression without a label', async () => {
+    const result = await run(ctx.tools, call('sketch_function', {
+      expr: '1 - exp(-x)',
+      mode: 'compare',
+      curves: ['1 - exp(-4x)'],
+      x_min: 0,
+      x_max: 3,
+    }))
+    expect(result.isError).toBeFalsy()
+    expect(textOf(result.content)).toContain('Curves: 1 - exp(-x), 1 - exp(-4x)')
+  })
+
   it('draws a named dataset in data mode', async () => {
     const result = await run(ctx.tools, call('sketch_function', {
       expr: 'chart',
@@ -236,6 +248,31 @@ describe('argument validation', () => {
     expect(result.isError).toBe(true)
     expect(textOf(result.content)).toContain('cannot parse expression')
     expect(textOf(result.content)).toContain('offset')
+  })
+
+  it('rejects a comparison label with parentheses instead of silently dropping it', async () => {
+    const result = await run(ctx.tools, call('sketch_function', {
+      expr: '1 - exp(-x)',
+      mode: 'compare',
+      curves: ['wide BW (T=0.25), 1 - exp(-4x)'],
+    }))
+    expect(result.isError).toBe(true)
+    const text = textOf(result.content)
+    expect(text).toContain('cannot parse comparison curve')
+    expect(text).toContain('keep parentheses and operators out of the label')
+  })
+
+  it('rejects a Chinese label written with a colon and reports the offset', async () => {
+    const result = await run(ctx.tools, call('sketch_function', {
+      expr: '1 - exp(-x)',
+      mode: 'compare',
+      curves: ['带宽大4倍: 1 - exp(-4x)'],
+    }))
+    expect(result.isError).toBe(true)
+    const text = textOf(result.content)
+    expect(text).toContain('cannot parse comparison curve')
+    expect(text).toContain('Unexpected character "带"')
+    expect(text).toContain('offset 0')
   })
 
   it('rejects an unknown function by name', async () => {

@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 说明：新版本将命名为 0.1.0+upstream.0.3.0
 
+### Fixed
+
+- 修复对比曲线标签解析不一致：工具预检改用出图引擎同一个 `splitCurveLine`，带括号/运算符的标签或中文冒号标签不再被静默丢弃，而是报出可操作的错误；摘要也不再列出没有采样点的曲线，并在参数说明中写明标签约束
+
 ## [0.3.0+fork.1] - 2026-11-26
 
 基线：上游 **v0.3.0**（commit `370936c`）。`+fork.1` 是构建元数据，不参与版本优先级比较。

@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { build } from '../src/parser.ts'
-import { autoRangeY, freezeYRange, resolveGeometry, resolveXRange, normalizeMode } from '../src/geometry.ts'
+import { autoRangeY, freezeYRange, resolveGeometry, resolveXRange, normalizeMode, splitCurveLine } from '../src/geometry.ts'
 import type { SketchSpec } from '../src/compact.ts'
 
 const X_MIN = -2 * Math.PI
@@ -188,6 +188,16 @@ describe('resolveGeometry', () => {
     expect(g.curves.length).toBe(3)
     expect(g.curves[1]?.label).toBe('抛物线')
     expect(g.curves[2]?.expr).toBe('2x')
+  })
+
+  it('keeps a parenthesised label inside the expression, so validation rejects it too', () => {
+    // The splitter is shared by the tool's pre-flight check and the geometry
+    // engine. Pinning this shapes the error path: a label with () cannot be
+    // silently accepted by one side and dropped by the other.
+    const line = 'wide BW (T=0.25), 1 - exp(-4x)'
+    expect(splitCurveLine(line)).toEqual({ expr: line })
+    const g = resolveGeometry({ expr: '1 - exp(-x)', mode: 'compare', compare: [line] })
+    expect(g.curves[1]?.points).toHaveLength(0)
   })
 
   it('fits the y-window to every curve in compare mode', () => {
