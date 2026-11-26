@@ -1602,8 +1602,9 @@ export function validateCardArgs(value: unknown): CardValidation {
   const result = readCardEnvelope(value)
   if (!result.ok) return result
   if (result.card.kind === TABLE_KIND) {
-    const table = checkTablePayload(result.card.payload)
-    if (!table.ok) return { ok: false, error: table.error }
+    // Tables render natively as Markdown in the answer and interleave with the
+    // prose there. The card channel is for graphics only.
+    return { ok: false, error: 'tables must be written as Markdown in the reply, not sent to show_card; use an aisketch fence for diagrams' }
   }
   if (result.card.kind === FLOWCHART_KIND) {
     const flowchart = checkFlowchartPayload(result.card.payload)

@@ -19,8 +19,8 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import {
   CARD_TOOL_NAME, DRAW_KIND, FIGURE_KIND, FLOWCHART_KIND, MAX_DRAW_ELEMENTS, MAX_FLOWCHART_EDGES, MAX_FLOWCHART_LABEL_LENGTH,
-  MAX_FLOWCHART_NODES, MAX_KIND_LENGTH, MAX_PAYLOAD_LENGTH, MAX_TABLE_COLUMNS, MAX_TABLE_ROWS,
-  MAX_TITLE_LENGTH, TABLE_KIND, analyzeDraw, buildDrawDisplayList, formatDrawDiagnostics, parseDrawPayload,
+  MAX_FLOWCHART_NODES, MAX_KIND_LENGTH, MAX_PAYLOAD_LENGTH,
+  MAX_TITLE_LENGTH, analyzeDraw, buildDrawDisplayList, formatDrawDiagnostics, parseDrawPayload,
   summarizeCard, validateCardArgs,
 } from '@aisketch/cards-core'
 import type { CardSpec } from '@aisketch/cards-core'
@@ -29,11 +29,6 @@ import type { PreviewAttachment } from './preview.ts'
 
 export const name = 'cards-tool'
 export const inject = ['tools', 'systemPrompt']
-
-/** The one payload shape the schema can spell out, so the model reads it before calling. */
-const TABLE_PAYLOAD_HINT =
-  `A "${TABLE_KIND}" card takes { columns: string[], rows: (string|number|boolean|null)[][] } `
-  + `with 1..${MAX_TABLE_COLUMNS} columns and at most ${MAX_TABLE_ROWS} rows.`
 
 /**
  * The diagram payload, spelled out for the same reason: the model supplies
@@ -203,47 +198,50 @@ export function apply(ctx: Context): void {
   ctx.systemPrompt.section({
     name: `tool:${CARD_TOOL_NAME}`,
     order: ctx.systemPrompt.getSectionOrder('TOOL_WEB_SEARCH'),
-    text: 'Use `show_card` whenever the answer is better shown than written: a table of numbers, '
-      + 'a flowchart of steps or branches, a checklist, a timeline, a key/value summary. Pass the card '
-      + 'as data -- `kind`, an optional `title`, and a `payload` object -- and never write HTML, SVG, or '
-      + 'a script yourself: the conversation renders the card natively. When the user asks for a picture '
-      + '(画一张 / 画个图 / 手绘 / 素描 / doodle / pixel art) or a drawing would explain better than words, '
-      + 'use kind "draw" and list its elements -- pen paths, shapes, text, tape, pixels. For a teaching or '
-      + 'scientific diagram (受力分析、斜面、原子结构、电子层、示意图), use kind "figure" with a template and '
-      + 'semantic params instead; do not use draw or canvas-design for diagrams. Never emulate a '
+    text: 'Tables belong in the answer as ordinary Markdown, not in a card. Graphics belong in a fence '
+      + 'inside the answer, so the picture sits between the paragraphs that explain it. Write a fenced '
+      + '```aisketch block containing a JSON card spec { "kind": ..., "title"?: ..., "payload": ... } for '
+      + 'a flowchart, a hand-drawn illustration, or a teaching figure. Supported kinds: "flowchart", '
+      + '"draw", "figure". never write HTML, SVG, or a plotting script yourself: the client renders the '
+      + 'card natively from the JSON. For a function graph use a fenced ```aisketch-plot block containing '
+      + '{"expr":"x^2", ...}. Place each fence right after the sentence it illustrates and follow it with '
+      + 'the next paragraph, so text and picture alternate instead of stacking all pictures at the end. '
+      + 'When the user asks for a picture (画一张 / 画个图 / 手绘 / 素描 / doodle / pixel art) use kind "draw" '
+      + 'and list its elements -- pen paths, shapes, text, tape, pixels. For a teaching or scientific '
+      + 'diagram (受力分析、斜面、原子结构、电子层、示意图), use kind "figure" with a template and semantic '
+      + 'params; the renderer owns the geometry, so never send coordinates or SVG. Do not emulate a '
       + 'picture with a table, emoji, ASCII art, or colored squares: a freehand picture is a "draw" card, '
       + 'while a teaching/scientific diagram is a "figure" card. '
-      + 'A kind the renderer does not know yet is still accepted and shown as a raw data preview, so a '
-      + `card never disappears; keep every payload under ${MAX_PAYLOAD_LENGTH} characters. `
+      + `Keep every payload under ${MAX_PAYLOAD_LENGTH} characters. `
       + 'A "draw" card comes back with a picture of what you sent plus a machine self-check. '
       + `${DRAW_STYLE_GUIDANCE} `
-      + 'For a non-trivial drawing, call show_card with draft:true at most once, look at its preview and '
-      + 'self-check, fix the payload if needed, then publish the finished drawing exactly once with draft '
-      + 'omitted. A draft is private and does not appear in the conversation. Never publish intermediate '
-      + 'versions, never call show_card repeatedly for the same picture, and do not paste the self-check '
-      + 'or an element list into the reply; a short lead-in plus the final card is enough. If the request '
-      + 'is a trivial mark you are sure about, skip the draft and publish once.',
+      + 'For a non-trivial drawing, call show_card with draft:true at most once to get a private preview '
+      + 'and self-check, fix the payload if needed, then put the finished drawing once in an ```aisketch '
+      + 'fence with draft omitted. A draft is private and does not appear in the conversation. Never '
+      + 'publish intermediate versions and do not paste the self-check or an element list into the reply; '
+      + 'a short lead-in, the fenced card, and the next paragraph are enough. If the request is a trivial '
+      + 'mark you are sure about, skip the draft and publish once.',
   })
 
   ctx.tools.register(defineTool({
     name: CARD_TOOL_NAME,
     description:
-      'Show a card in the conversation: a table of numbers, a flowchart of steps, a hand-drawn sketch, '
-      + 'a scientific/teaching figure, a checklist, a timeline, or any structured summary. Pass `kind` '
-      + '(an identifier such as "table", "flowchart", "figure" or "draw"), an optional `title`, and a '
-      + '`payload` object. For a freehand doodle, illustration or pixel art use kind "draw"; for a teaching '
-      + 'or scientific diagram (forces, atomic shells) use kind "figure" with a template and semantic params; '
-      + 'never emulate a picture with a table, emoji, ASCII art, or colored squares. '
-      + `${TABLE_PAYLOAD_HINT} ${FLOWCHART_PAYLOAD_HINT} ${FIGURE_PAYLOAD_HINT} ${DRAW_PAYLOAD_HINT} Unknown kinds are accepted `
-      + 'and rendered as a raw data preview, so prefer inventing an honest kind over forcing a payload '
-      + 'into the wrong one. A "draw" card can be returned as a private draft (draft:true): you get a '
-      + 'rendered preview plus a machine self-check, but the user does not see that card. When the picture '
-      + 'is finished, submit it once with draft omitted. Do not publish intermediate revisions.',
+      'Validate a graphics card spec and, for drawings, get a private rasterized preview for your own '
+      + 'inspection. Pass `kind` ("flowchart", "figure" or "draw"), an optional `title`, and a `payload` '
+      + 'object. Tables are NOT supported: write them as Markdown in the reply. For a freehand doodle, '
+      + 'illustration or pixel art use kind "draw"; for a teaching or scientific diagram (forces, atomic '
+      + 'shells) use kind "figure" with a template and semantic params; never emulate a picture with a '
+      + 'table, emoji, ASCII art, or colored squares. '
+      + `${FLOWCHART_PAYLOAD_HINT} ${FIGURE_PAYLOAD_HINT} ${DRAW_PAYLOAD_HINT} Unknown kinds are accepted `
+      + 'for validation but have no client renderer. A drawing can be returned as a private draft '
+      + '(draft:true): you get a rendered preview plus a machine self-check, but no card is shown. '
+      + 'The public picture goes in the FINAL answer as a fenced ```aisketch block containing this exact '
+      + 'JSON spec, placed between the paragraphs it explains. Do not publish intermediate revisions.',
     parameters: {
       kind: {
         type: 'string',
         required: true,
-        description: `Renderer key, for example "${TABLE_KIND}", "${FLOWCHART_KIND}", "${FIGURE_KIND}" or "${DRAW_KIND}". Letters, digits, ".", "_" or "-", at most ${MAX_KIND_LENGTH} characters; an unrecognized kind still renders its payload as a raw preview.`,
+        description: `Renderer key: "${FLOWCHART_KIND}", "${FIGURE_KIND}" or "${DRAW_KIND}". Tables are not supported; write them as Markdown in the reply. Letters, digits, ".", "_" or "-", at most ${MAX_KIND_LENGTH} characters.`,
       },
       title: {
         type: 'string',
@@ -253,7 +251,7 @@ export function apply(ctx: Context): void {
         type: 'object',
         additionalProperties: true,
         required: true,
-        description: `Kind-owned JSON object. ${TABLE_PAYLOAD_HINT} ${FLOWCHART_PAYLOAD_HINT} ${DRAW_PAYLOAD_HINT}`,
+        description: `Kind-owned JSON object. ${FLOWCHART_PAYLOAD_HINT} ${FIGURE_PAYLOAD_HINT} ${DRAW_PAYLOAD_HINT}`,
       },
       preview: {
         type: 'boolean',

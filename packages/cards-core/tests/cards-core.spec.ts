@@ -84,10 +84,10 @@ describe('table payload', () => {
     expect(parseTablePayload(payload)).toBeNull()
   })
 
-  it('is refused by validateCardArgs with the payload reason', () => {
+  it('is refused by validateCardArgs with a pointer to Markdown', () => {
     const result = validateCardArgs(table({ columns: ['a'], rows: [[1, 2]] }))
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error).toContain('one per column')
+    if (!result.ok) expect(result.error).toContain('Markdown')
   })
 })
 
@@ -193,10 +193,10 @@ describe('flowchart payload', () => {
 })
 
 describe('validateCardArgs', () => {
-  it('admits a well-formed table', () => {
+  it('refuses a well-formed table, which belongs in the answer as Markdown', () => {
     const result = validateCardArgs(table({ columns: ['月份', '收入'], rows: [['1月', 120]] }, '月度收入'))
-    expect(result.ok).toBe(true)
-    if (result.ok) expect(result.card.kind).toBe('table')
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('Markdown')
   })
 
   it('admits an unknown kind without inspecting its payload', () => {
@@ -204,7 +204,11 @@ describe('validateCardArgs', () => {
   })
 
   it('survives the persistence round trip the browser replays', () => {
-    const args = { kind: 'table', title: '月度收入', payload: { columns: ['月份'], rows: [['1月']] } }
+    const args = {
+      kind: 'flowchart',
+      title: '流程',
+      payload: { nodes: [{ id: 'a', label: '开始' }], edges: [] },
+    }
     const admitted = validateCardArgs(args)
     expect(admitted.ok).toBe(true)
     if (!admitted.ok) return

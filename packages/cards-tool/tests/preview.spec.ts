@@ -176,13 +176,13 @@ describe('a drawing comes back to its author', () => {
     expect(textOf(result.content)).toContain('<self-check>')
   })
 
-  it('leaves a table card exactly as it was', async () => {
+  it('refuses a table instead of attaching a picture to it', async () => {
     const result = await execute(ctx.tools, call({
       kind: 'table',
       payload: { columns: ['a'], rows: [['x']] },
     }))
+    expect(result.isError).toBe(true)
     expect(imagesOf(result.content)).toHaveLength(0)
-    expect(result.value).not.toHaveProperty('selfCheck')
     expect(savedImages).toHaveLength(0)
   })
 })
