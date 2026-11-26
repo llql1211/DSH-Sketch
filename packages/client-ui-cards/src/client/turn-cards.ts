@@ -13,13 +13,13 @@
  * The source is the persisted `tool/call` arguments -- the same bytes the `card`
  * node projects from -- so the two faces never disagree and a replayed session
  * redraws the identical cards with no Host call. Private drafts are accumulated
- * with the rest but filtered out when a final card exists; the last draw draft
- * is used only as a fallback when no final was published.
+ * with the rest but filtered out here: draw calls and drafts feed the inline
+ * fence, not the tail.
  */
 import type { ConversationNodeDefinition } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { CardSpec } from '@aisketch/cards-core'
-import { CARD_TOOL_NAME, parseCardSpec } from '@aisketch/cards-core'
+import { CARD_TOOL_NAME, DRAW_KIND, parseCardSpec } from '@aisketch/cards-core'
 import { isPrivateDraft, readCallArguments } from './card-definition.ts'
 
 /** One card carried by a Turn. */
@@ -64,13 +64,13 @@ interface CardsTurnState {
  */
 export function selectCardsTurn(owner: TurnTailOwnerProps): readonly CardEntry[] | null {
   const cards = owner.turn.data.get('card-tail')?.cards ?? []
-  const closing = cards.filter(entry => entry.seq < owner.seq)
+  // A draw call is the authoring/preview pass behind an inline fence, never an
+  // artifact of its own. Filtering it here as well as in the card node means a
+  // model that omits draft:true cannot make the same picture appear twice.
+  const closing = cards.filter(entry => entry.seq < owner.seq && entry.card?.kind !== DRAW_KIND)
   if (closing.length === 0) return null
   const finals = closing.filter(entry => !entry.draft)
-  if (finals.some(entry => entry.card?.kind === 'draw')) return finals
-  const fallback = [...closing].reverse().find(entry => entry.draft && entry.card?.kind === 'draw')
-  if (fallback === undefined) return finals.length === 0 ? null : finals
-  return [...finals, fallback].sort((left, right) => left.seq - right.seq)
+  return finals.length === 0 ? null : finals
 }
 
 /** Turn-local card accumulator; it publishes no view Node. */

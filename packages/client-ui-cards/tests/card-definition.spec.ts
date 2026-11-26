@@ -120,13 +120,15 @@ describe('the published node', () => {
     expect(node).toBeNull()
   })
 
-  it('publishes the final call, where draft is false or omitted', () => {
+  it('publishes no card for a draw call even without the draft flag', () => {
+    // draw calls are the preview pass behind an inline fence; the flag is not
+    // what makes them private, so a model that omits it cannot double-publish.
     const node = project(callEvent({
       kind: 'draw',
       draft: false,
       payload: { elements: [{ type: 'path', d: 'M 0 0 L 10 10' }] },
     }))
-    expect(node?.data).toMatchObject({ card: { kind: 'draw' } })
+    expect(node).toBeNull()
   })
 
   it('replays from the persisted argument text a reload hands back', () => {

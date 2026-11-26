@@ -72,6 +72,8 @@ describe('registration', () => {
     expect(prompt).toContain('illustration')
     expect(prompt).toContain('figure')
     expect(prompt).toContain('draft:true')
+    expect(prompt).toContain('{"ref":')
+    expect(prompt).not.toContain('draft omitted')
     expect(prompt).not.toContain('add 1-3 short labels')
   })
 })
@@ -90,6 +92,13 @@ describe('table cards are no longer accepted', () => {
   it('stamps the contract version so a renderer can tell specs apart', async () => {
     const result = await run(ctx.tools, call('show_card', { kind: 'note', payload: {} }))
     expect(result.value).toMatchObject({ card: { version: 1 } })
+  })
+
+  it('echoes the call id as a ref the model can put in a fence', async () => {
+    const result = await run(ctx.tools, call('show_card', { kind: 'note', payload: {} }))
+    expect(result.value).toHaveProperty('ref')
+    expect(typeof (result.value as { ref?: unknown }).ref).toBe('string')
+    expect(textOf(result.content)).toContain('- ref: ')
   })
 
   it('keeps an unknown kind verbatim, so a newer renderer can still claim it', async () => {
@@ -142,7 +151,7 @@ describe('showing a flowchart card', () => {
     const result = await run(ctx.tools, call('show_card', { kind: 'flowchart', title: 'if~else', payload: ifElse }))
     expect(result.isError).toBeFalsy()
     expect(result.value).toMatchObject({ card: { kind: 'flowchart', title: 'if~else' } })
-    expect(textOf(result.content)).toBe('Showed a "flowchart" card titled "if~else": 4 node(s), 3 connection(s).')
+    expect(textOf(result.content)).toContain('Showed a "flowchart" card titled "if~else": 4 node(s), 3 connection(s).')
   })
 
   it('refuses a connection to a node that was never declared, so the model can correct it', async () => {
@@ -198,13 +207,18 @@ describe('drawing a finished picture', () => {
     const result = await run(ctx.tools, call('show_card', { ...sketch, draft: true }))
     expect(result.isError).toBeFalsy()
     expect(result.value).toMatchObject({ card: { kind: 'draw' } })
-    expect(String((result.value as { selfCheck?: unknown }).selfCheck ?? '')).toContain('private draft')
+    const check = String((result.value as { selfCheck?: unknown }).selfCheck ?? '')
+    expect(check).toContain('private draft')
+    expect(check).toContain('ref below')
+    expect(check).not.toContain('draft omitted')
   })
 
   it('exposes the one-shot delivery switch to the model', () => {
     const schema = ctx.tools.schemas().find(candidate => candidate.name === 'show_card')
     expect(JSON.stringify(schema)).toContain('draft')
     expect(JSON.stringify(schema)).toContain('no card is shown to the user')
+    expect(JSON.stringify(schema)).toContain('ref from the result')
+    expect(JSON.stringify(schema)).not.toContain('draft omitted')
   })
 })
 

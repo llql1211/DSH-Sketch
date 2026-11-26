@@ -13,7 +13,7 @@
  * A bad card the model can see is a card the model can fix.
  */
 
-import { CARD_TOOL_NAME, parseCardSpec } from '@aisketch/cards-core'
+import { CARD_TOOL_NAME, DRAW_KIND, parseCardSpec } from '@aisketch/cards-core'
 import type { CardSpec } from '@aisketch/cards-core'
 import type { ConversationNodeDefinition } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
@@ -110,9 +110,10 @@ export const cardDefinition: ConversationNodeDefinition<CardNodeState> = {
   buildViewNode: (context) => {
     if (context.state === undefined) return null
     // A private draft is a picture for the model to inspect, not an artifact of
-    // the answer. The completed-Turn tail applies the same rule and falls back
-    // to the last draft only when no final card was ever published.
-    if (context.state.draft) return null
+    // the answer. A draw call is the authoring/preview pass for an inline fence;
+    // it never publishes a card of its own, whatever the draft flag says. The
+    // completed-Turn tail applies the same rule.
+    if (context.state.draft || context.state.card?.kind === DRAW_KIND) return null
     return {
       key: context.key,
       kind: CARD_NODE_KIND,

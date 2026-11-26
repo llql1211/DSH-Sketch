@@ -170,19 +170,19 @@ describe('what the tail selects', () => {
     expect(selected?.map(entry => entry.callId)).toEqual(['call-1'])
   })
 
-  it('hides a private draft once a final drawing exists', () => {
+  it('never shows a draw call, draft or final -- the inline fence owns the picture', () => {
     const cards = [
       { callId: 'draft', seq: 7, card: { version: 1, kind: 'draw', payload: {} }, raw: {}, draft: true },
       { callId: 'final', seq: 9, card: { version: 1, kind: 'draw', payload: {} }, raw: {}, draft: false },
     ]
-    expect(selectCardsTurn(owner(cards, 100))?.map(entry => entry.callId)).toEqual(['final'])
+    expect(selectCardsTurn(owner(cards, 100))).toBeNull()
   })
 
-  it('falls back to the last draw draft when the model never published a final', () => {
+  it('does not use a draw draft as a fallback when no final was published', () => {
     const cards = [
       { callId: 'draft-1', seq: 7, card: { version: 1, kind: 'draw', payload: {} }, raw: {}, draft: true },
       { callId: 'draft-2', seq: 11, card: { version: 1, kind: 'draw', payload: {} }, raw: {}, draft: true },
     ]
-    expect(selectCardsTurn(owner(cards, 100))?.map(entry => entry.callId)).toEqual(['draft-2'])
+    expect(selectCardsTurn(owner(cards, 100))).toBeNull()
   })
 })
