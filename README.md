@@ -2,6 +2,8 @@
 
 给 [DSH](https://github.com/deepseek-ai/deepseek-harness)（DeepSeek Harness）加一条「**模型只给结构，客户端负责作图**」的卡片通道。
 
+> 本仓库是上游 [QinLuza/dsh-aisketch](https://github.com/QinLuza/dsh-aisketch) 的 fork，整体差异见 [docs/fork.md](docs/fork.md)，逐版更新见 [docs/fork_changelog.md](docs/fork_changelog.md)。
+
 **English TL;DR** — dsh-aisketch adds two extension points to DSH: `show_card` (native table / SVG flowchart / hand-drawn draw / semantic teaching figures) and `sketch_function` (six interactive plot modes). The model supplies structure only; a deterministic engine owns geometry. MIT, zero base changes.
 
 | 工具 | 模型给什么 | 用户看到什么 |
