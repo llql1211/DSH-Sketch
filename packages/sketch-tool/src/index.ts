@@ -1,22 +1,15 @@
 /**
- * Model-facing `sketch_function` tool.
+ * Model-facing `sketch_function` tool: a function canvas.
  *
- * The point of this tool is the shape of what the model has to produce. Drawing
- * a function graph by writing HTML costs 800-1500 output tokens and is
- * unreviewable; naming an expression costs a handful. Measured across the
- * supported modes, a minified call payload lands between 4 and 45 tokens:
+ * The tool validates a canvas spec and returns a short computed summary. It
+ * draws no pixels: the browser card derives the picture from the same spec with
+ * the same core library, so a replayed session renders an identical plot with
+ * no Host involvement.
  *
- *   x^2                     4
- *   A*sin(w*x+p), 3 params  20
- *   tangent at a point      9
- *   taylor to order 5       11
- *   3 comparison curves     31
- *   a 2-series bar chart    45
- *
- * The tool does not return geometry: it returns a canonical spec, and the
- * browser card derives the picture from that spec with the same core library.
- * Keeping geometry out of the result is what makes a replayed session render
- * identically without any Host-side artefacts.
+ * A canvas is a window, 1..8 `y = f(x)` curves with optional styling, and
+ * optional marks (tangent, area, Taylor polynomial, point and text notes). The
+ * old mutually-exclusive modes are gone; data charts live in `show_card`'s
+ * `chart` kind because they are not functions.
  *
  * @module @deepseek-ai/dsh-experimental-sketch-tool
  */
@@ -26,110 +19,204 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import {
-  MODES,
+  DASH_PRESETS,
+  MAX_CANVAS_CURVES,
+  MAX_CANVAS_MARKS,
   ParseError,
   build,
-  freeVariables,
-  normalizeMode,
-  resolveGeometry,
-  splitCurveLine,
+  canvasExpressions,
+  canvasParameters,
+  isSketchColor,
+  resolveCanvas,
+  upgradeSpec,
 } from '@aisketch/sketch-core'
-import type { Mode, SketchSpec } from '@aisketch/sketch-core'
+import type { CanvasParam, CanvasSpec } from '@aisketch/sketch-core'
 
 export const name = 'sketch-tool'
 export const inject = ['tools', 'systemPrompt']
 
-/** Upper bound on drawn curves, so one call cannot flood a transcript. */
-const MAX_CURVES = 6
-
-/** Upper bound on the Taylor order; past this the numbers stop meaning much. */
+/** Upper bounds for the numeric arguments that become marks. */
+const MAX_AREA_RECTANGLES = 200
 const MAX_TAYLOR_ORDER = 12
-
-/** Upper bound on rectangle count in the area mode. */
-const MAX_RECTANGLES = 200
 
 /** Parsed tool args; `execute` checks the constraints the schema DSL cannot express. */
 interface SketchArgs {
-  expr: string
-  mode?: string
-  params?: Record<string, unknown>
+  expr?: string
+  curves?: readonly unknown[]
   x_min?: number
   x_max?: number
-  curves?: readonly unknown[]
-  probe?: number
-  a?: number
-  b?: number
-  n?: number
-  order?: number
-  center?: number
+  y_min?: number
+  y_max?: number
+  params?: Record<string, unknown>
+  marks?: readonly unknown[]
+  legend?: boolean
+  // Retired spellings, recognised only to produce a useful refusal.
+  mode?: string
   dataset?: string
+  data?: string
+  series?: string
 }
 
-/** One parameter tuple: slider bounds and current value. */
-type ParamTuple = readonly [number, number, number]
-
-/**
- * Narrow one `params` entry to a validated tuple.
- * @param key - parameter name, for the error message.
- * @param raw - the unvalidated value from the model.
- * @returns the tuple, or a null when the shape is wrong.
- */
-function asParamTuple(raw: unknown): ParamTuple | null {
-  if (!Array.isArray(raw) || raw.length !== 3) return null
-  const [lo, hi, value] = raw as unknown[]
-  if (typeof lo !== 'number' || typeof hi !== 'number' || typeof value !== 'number') return null
-  if (![lo, hi, value].every(Number.isFinite)) return null
-  return [lo, hi, value]
+/** Whether a value is a finite number. */
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
 }
 
-/**
- * Reject the arg values the parameter schema cannot express.
- * @param args - the model's arguments.
- * @throws {Error} when a value is out of range or self-contradictory.
- */
+/** Reject the argument values the parameter schema cannot express. */
 function validateArgs(args: SketchArgs): void {
-  if (args.expr.trim().length === 0) {
+  if (args.data !== undefined || args.dataset !== undefined || args.series !== undefined) {
+    throw new Error('data charts are not function plots: use show_card with kind "chart" and a real series instead')
+  }
+  if (typeof args.expr !== 'string' && !Array.isArray(args.curves)) {
+    throw new Error('invalid canvas: provide an `expr` or a `curves` array')
+  }
+  if (typeof args.expr === 'string' && args.expr.trim().length === 0) {
     throw new Error('invalid expr: expected a non-empty expression string')
   }
-  if (args.x_min !== undefined && args.x_max !== undefined && !(args.x_max > args.x_min)) {
-    throw new Error(`invalid range: x_max (${args.x_max}) must be greater than x_min (${args.x_min})`)
+  const count = (typeof args.expr === 'string' && args.expr.trim().length > 0 ? 1 : 0)
+    + (Array.isArray(args.curves) ? args.curves.length : 0)
+  if (count === 0) throw new Error('invalid canvas: at least one curve is required')
+  if (count > MAX_CANVAS_CURVES) {
+    throw new Error(`invalid curves: at most ${MAX_CANVAS_CURVES} curves (got ${count})`)
   }
-  if (args.order !== undefined && (!Number.isInteger(args.order) || args.order < 1 || args.order > MAX_TAYLOR_ORDER)) {
-    throw new Error(`invalid order: expected an integer in [1, ${MAX_TAYLOR_ORDER}], got ${args.order}`)
+
+  if (Array.isArray(args.curves)) {
+    for (const [index, raw] of args.curves.entries()) {
+      if (typeof raw === 'string') {
+        if (raw.trim().length === 0) throw new Error(`invalid curves[${index}]: empty expression`)
+        continue
+      }
+      if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+        throw new Error(`invalid curves[${index}]: expected an expression string or a curve object`)
+      }
+      const curve = raw as Record<string, unknown>
+      if (typeof curve.expr !== 'string' || curve.expr.trim().length === 0) {
+        throw new Error(`invalid curves[${index}]: expected a non-empty \`expr\``)
+      }
+      if (curve.color !== undefined && !isSketchColor(curve.color)) {
+        throw new Error(`invalid curves[${index}].color: use a named color or #rgb/#rrggbb`)
+      }
+      if (curve.dash !== undefined
+        && !(typeof curve.dash === 'string' && (DASH_PRESETS as readonly string[]).includes(curve.dash))) {
+        throw new Error(`invalid curves[${index}].dash: expected one of ${DASH_PRESETS.join(', ')}`)
+      }
+      if (curve.width !== undefined && !(isFiniteNumber(curve.width) && curve.width >= 0.5 && curve.width <= 6)) {
+        throw new Error(`invalid curves[${index}].width: expected a number in [0.5, 6]`)
+      }
+      if (curve.label !== undefined && typeof curve.label !== 'string') {
+        throw new Error(`invalid curves[${index}].label: expected a string`)
+      }
+    }
   }
-  if (args.n !== undefined && (!Number.isInteger(args.n) || args.n < 1 || args.n > MAX_RECTANGLES)) {
-    throw new Error(`invalid n: expected an integer in [1, ${MAX_RECTANGLES}], got ${args.n}`)
+
+  for (const [axis, lo, hi] of [
+    ['x', args.x_min, args.x_max],
+    ['y', args.y_min, args.y_max],
+  ] as const) {
+    if ((lo === undefined) !== (hi === undefined)) {
+      throw new Error(`invalid range: ${axis}_min and ${axis}_max must be given together`)
+    }
+    if (lo !== undefined && hi !== undefined && !(hi > lo)) {
+      throw new Error(`invalid range: ${axis}_max (${hi}) must be greater than ${axis}_min (${lo})`)
+    }
   }
-  if (args.curves !== undefined && args.curves.length > MAX_CURVES - 1) {
-    throw new Error(`invalid curves: at most ${MAX_CURVES - 1} additional curves (got ${args.curves.length})`)
-  }
+
   for (const [key, raw] of Object.entries(args.params ?? {})) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
       throw new Error(`invalid parameter name "${key}": expected an identifier`)
     }
-    const tuple = asParamTuple(raw)
-    if (tuple === null) {
+    if (!Array.isArray(raw) || raw.length !== 3 || !raw.every(isFiniteNumber)) {
       throw new Error(`invalid parameter "${key}": expected three finite numbers [min, max, value]`)
     }
-    const [lo, hi, value] = tuple
-    if (!(hi > lo)) {
-      throw new Error(`invalid parameter "${key}": max (${hi}) must exceed min (${lo})`)
+    const [lo, hi, value] = raw as unknown[]
+    if (!(Number(hi) > Number(lo))) {
+      throw new Error(`invalid parameter "${key}": max (${String(hi)}) must exceed min (${String(lo)})`)
     }
-    if (value < lo || value > hi) {
-      throw new Error(`invalid parameter "${key}": value ${value} lies outside [${lo}, ${hi}]`)
+    if (Number(value) < Number(lo) || Number(value) > Number(hi)) {
+      throw new Error(`invalid parameter "${key}": value ${String(value)} lies outside [${String(lo)}, ${String(hi)}]`)
+    }
+  }
+
+  if (args.marks !== undefined && !Array.isArray(args.marks)) {
+    throw new Error('invalid marks: expected an array')
+  }
+  const marks = (args.marks ?? []) as readonly unknown[]
+  if (marks.length > MAX_CANVAS_MARKS) {
+    throw new Error(`invalid marks: at most ${MAX_CANVAS_MARKS} marks (got ${marks.length})`)
+  }
+  for (const [index, raw] of marks.entries()) {
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new Error(`invalid marks[${index}]: expected an object with a \`type\``)
+    }
+    const mark = raw as Record<string, unknown>
+    const at = `marks[${index}]`
+    const curve = mark.curve
+    if (curve !== undefined && !(isFiniteNumber(curve) && Number.isInteger(curve) && curve >= 0)) {
+      throw new Error(`invalid ${at}.curve: expected a non-negative integer`)
+    }
+    if (mark.color !== undefined && !isSketchColor(mark.color)) {
+      throw new Error(`invalid ${at}.color: use a named color or #rgb/#rrggbb`)
+    }
+    switch (mark.type) {
+      case 'tangent':
+        if (mark.x !== undefined && !isFiniteNumber(mark.x)) throw new Error(`invalid ${at}.x: expected a number`)
+        break
+      case 'area':
+        if (!isFiniteNumber(mark.a) || !isFiniteNumber(mark.b) || !(mark.b > mark.a)) {
+          throw new Error(`invalid ${at}: \`a\` and \`b\` must be finite numbers with b > a`)
+        }
+        if (mark.n !== undefined && !(isFiniteNumber(mark.n) && mark.n >= 1 && mark.n <= MAX_AREA_RECTANGLES)) {
+          throw new Error(`invalid ${at}.n: expected an integer in [1, ${MAX_AREA_RECTANGLES}]`)
+        }
+        break
+      case 'poly':
+        if (mark.center !== undefined && !isFiniteNumber(mark.center)) throw new Error(`invalid ${at}.center: expected a number`)
+        if (mark.order !== undefined && !(isFiniteNumber(mark.order) && mark.order >= 1 && mark.order <= MAX_TAYLOR_ORDER)) {
+          throw new Error(`invalid ${at}.order: expected an integer in [1, ${MAX_TAYLOR_ORDER}]`)
+        }
+        break
+      case 'vline':
+        if (!isFiniteNumber(mark.x)) {
+          throw new Error(`invalid ${at}: \`x\` must be a finite number`)
+        }
+        for (const key of ['y0', 'y1'] as const) {
+          if (mark[key] !== undefined && !isFiniteNumber(mark[key])) {
+            throw new Error(`invalid ${at}.${key}: expected a number`)
+          }
+        }
+        if (mark.label !== undefined && typeof mark.label !== 'string') {
+          throw new Error(`invalid ${at}.label: expected a string`)
+        }
+        if (mark.dash !== undefined
+          && !(typeof mark.dash === 'string' && (DASH_PRESETS as readonly string[]).includes(mark.dash))) {
+          throw new Error(`invalid ${at}.dash: expected one of ${DASH_PRESETS.join(', ')}`)
+        }
+        if (mark.width !== undefined && !(isFiniteNumber(mark.width) && mark.width >= 0.5 && mark.width <= 6)) {
+          throw new Error(`invalid ${at}.width: expected a number in [0.5, 6]`)
+        }
+        break
+      case 'point':
+        if (!isFiniteNumber(mark.x) || !isFiniteNumber(mark.y)) {
+          throw new Error(`invalid ${at}: \`x\` and \`y\` must be finite numbers`)
+        }
+        if (mark.dx !== undefined && !isFiniteNumber(mark.dx)) throw new Error(`invalid ${at}.dx: expected a number`)
+        if (mark.dy !== undefined && !isFiniteNumber(mark.dy)) throw new Error(`invalid ${at}.dy: expected a number`)
+        break
+      case 'text':
+        if (!isFiniteNumber(mark.x) || !isFiniteNumber(mark.y)) {
+          throw new Error(`invalid ${at}: \`x\` and \`y\` must be finite numbers`)
+        }
+        if (typeof mark.text !== 'string' || mark.text.trim().length === 0) {
+          throw new Error(`invalid ${at}.text: expected a non-empty string`)
+        }
+        break
+      default:
+        throw new Error(`invalid ${at}.type: expected tangent, area, poly, vline, point or text`)
     }
   }
 }
 
-/**
- * Compile one expression, returning a model-readable error detail or null.
- *
- * Both the primary expression and each comparison line are checked with this
- * helper so a syntax error always carries its offset, whichever line it came
- * from.
- * @param expr - expression text.
- * @returns the error detail, or null when the expression compiles.
- */
+/** Compile one expression, returning a model-readable error detail or null. */
 function compileError(expr: string): string | null {
   try {
     build(expr)
@@ -141,46 +228,6 @@ function compileError(expr: string): string | null {
   }
 }
 
-/**
- * Turn the model's arguments into the canonical spec the card renders.
- *
- * Parameters the expression does not actually use are dropped rather than
- * rejected: a model that guesses `A` for `sin(x)` should still get a picture.
- * @param args - validated arguments.
- * @returns the canonical spec, free of undefined members.
- */
-function toSpec(args: SketchArgs): SketchSpec {
-  const mode = normalizeMode(args.mode)
-  let vars: readonly string[]
-  try {
-    vars = freeVariables(build(args.expr).ast)
-  } catch {
-    vars = []
-  }
-  const used = new Set(vars)
-
-  const params: Record<string, ParamTuple> = {}
-  for (const [key, raw] of Object.entries(args.params ?? {})) {
-    if (!used.has(key)) continue
-    const tuple = asParamTuple(raw)
-    if (tuple !== null) params[key] = tuple
-  }
-
-  const curves = (args.curves ?? []).filter((c): c is string => typeof c === 'string' && c.length > 0)
-
-  return {
-    expr: args.expr.trim(),
-    ...Object.keys(params).length > 0 ? { params } : {},
-    ...mode !== 'plain' ? { mode } : {},
-    ...args.x_min !== undefined && args.x_max !== undefined
-      ? { range: { x: [args.x_min, args.x_max] as const } }
-      : {},
-    ...curves.length > 0 ? { compare: curves } : {},
-    ...args.dataset !== undefined ? { data: args.dataset } : {},
-    ...args.center !== undefined ? { center: args.center } : {},
-  }
-}
-
 /** Format a number for prose without exponent noise on ordinary values. */
 function num(v: number, digits = 4): string {
   if (!Number.isFinite(v)) return String(v)
@@ -189,112 +236,68 @@ function num(v: number, digits = 4): string {
 }
 
 /**
- * Describe the plot in text, which is what the model actually reads.
- *
- * The picture is the deliverable for the human; this prose is the deliverable
- * for the model, so it states the facts a follow-up turn would need — the
- * window, the parameter values, and any computed quantity worth quoting.
- * @param spec - the canonical spec.
- * @param mode - the resolved mode.
+ * Describe the canvas in text, which is what the model actually reads.
+ * @param spec - the canonical canvas spec.
  * @param geometry - what the card will draw.
- * @returns a short, factual description.
+ * @returns a short, factual description including computed mark quantities.
  */
-function summarize(spec: SketchSpec, mode: Mode, geometry: ReturnType<typeof resolveGeometry>): string {
+function summarize(spec: CanvasSpec, geometry: ReturnType<typeof resolveCanvas>): string {
   const lines: string[] = []
   const window = `x ∈ [${num(geometry.xRange[0])}, ${num(geometry.xRange[1])}]`
   const yWindow = `y ∈ [${num(geometry.yRange.yMin)}, ${num(geometry.yRange.yMax)}]`
-
-  if (mode === 'data') {
-    lines.push(`Drew a data chart for "${spec.data ?? spec.expr}" (${window}).`)
-    return lines.join('\n')
-  }
+  const drawn = geometry.curves.filter((curve) => curve.points.length > 0)
+  const skipped = geometry.curves.length - drawn.length
 
   const paramText = Object.entries(spec.params ?? {})
     .map(([k, v]) => `${k}=${num(v[2])}`)
     .join(', ')
+  lines.push(
+    `Drew ${drawn.length} curve(s)${paramText.length > 0 ? ` with ${paramText}` : ''} `
+    + `(${window}, ${yWindow}).`,
+  )
 
-  lines.push(`Drew ${spec.expr}${paramText.length > 0 ? ` with ${paramText}` : ''} (${window}, ${yWindow}).`)
-
-  // Only name curves that actually have samples: a broken comparison line must
-  // not be advertised as drawn just because it has an entry in the geometry.
-  const drawn = geometry.curves.filter((c) => c.points.length > 0)
   if (drawn.length > 1) {
-    const labels = drawn
-      .map((c) => c.label ?? c.expr)
-      .join(', ')
-    lines.push(`Curves: ${labels}.`)
+    lines.push(`Curves: ${drawn.map((c, i) => c.label ?? `curve ${i + 1}`).join(', ')}.`)
   }
-  const skipped = geometry.curves.length - drawn.length
-  if (skipped > 0) {
-    lines.push(`Warning: ${skipped} comparison curve(s) could not be drawn and were skipped.`)
-  }
+  if (skipped > 0) lines.push(`Warning: ${skipped} curve(s) could not be drawn and were skipped.`)
 
-  const tangent = geometry.tangent
-  if (tangent !== undefined) {
-    lines.push(`At x=${num(tangent.x)}: f(x)=${num(tangent.y)}, slope f'(x)=${num(tangent.slope)}.`)
+  for (const mark of geometry.marks) {
+    if (mark.type === 'tangent') {
+      lines.push(`At x=${num(mark.x)}: f(x)=${num(mark.y)}, slope f'(x)=${num(mark.slope)}.`)
+    } else if (mark.type === 'area') {
+      const error = Math.abs(mark.sum - mark.exact)
+      lines.push(
+        `Area mark over [${num(mark.a)}, ${num(mark.b)}] with n=${mark.n}: ${num(mark.sum)}; `
+        + `exact integral ${num(mark.exact)}; absolute error ${num(error)}.`,
+      )
+    } else if (mark.type === 'poly') {
+      const terms = mark.coefficients.map((c, k) => {
+        if (k === 0) return num(c)
+        const power = k === 1 ? '(x-a)' : `(x-a)^${k}`
+        return `${num(c)}${power}`
+      })
+      lines.push(`Taylor mark at a=${num(mark.center)}, degree ${mark.order}: ${terms.join(' + ')}.`)
+    }
   }
-
-  const riemann = geometry.riemann
-  if (riemann !== undefined) {
-    const sum = num(riemann.sum)
-    const exact = num(riemann.exact)
-    const error = Math.abs(riemann.sum - riemann.exact)
-    lines.push(
-      `Riemann sum over [${num(riemann.a)}, ${num(riemann.b)}] with n=${riemann.n}: ${sum}; `
-      + `exact integral ${exact}; absolute error ${num(error)}.`,
-    )
-  }
-
-  const taylor = geometry.taylor
-  if (taylor !== undefined) {
-    const terms = taylor.coefficients.map((c, k) => {
-      if (k === 0) return num(c)
-      const power = k === 1 ? '(x-a)' : `(x-a)^${k}`
-      return `${num(c)}${power}`
-    })
-    lines.push(`Taylor at a=${num(taylor.center)}, degree ${taylor.order}: ${terms.join(' + ')}.`)
-  }
-
   return lines.join('\n')
 }
 
-/** The pending card for a call: echo the expression the model asked for. */
+/** The pending card for a call: echo the first expression the model asked for. */
 function presentSketchCall(args: SketchArgs): ToolCallView {
-  return {
-    card: 'generic',
-    title: args.expr,
-    kind: 'read',
-    ...args.mode !== undefined && args.mode !== 'plain' ? { content: [{ type: 'text' as const, text: args.mode }] } : {},
-  }
+  const first = typeof args.expr === 'string' ? args.expr : (Array.isArray(args.curves) ? args.curves[0] : undefined)
+  const title = typeof first === 'string' ? first : 'function canvas'
+  return { card: 'generic', title, kind: 'read' }
 }
 
-/**
- * The completed card falls back to generic text.
- *
- * The browser draws the plot through its own keyed `tool.call.toolview` entry,
- * reading the persisted spec out of the result; this Host-side view exists so
- * non-browser surfaces still show something meaningful.
- * @param args - the model's arguments.
- * @param result - the settled result.
- * @returns a generic card carrying the rendered prose.
- */
+/** Non-browser surfaces get the computed prose; browsers draw from presentationMeta. */
 function presentSketchResult(_args: unknown, result: { content: readonly { type: string; text?: string }[] }): ToolResultView | undefined {
   const block = result.content.length === 1 ? result.content[0] : undefined
   if (block === undefined || block.type !== 'text' || block.text === undefined) return undefined
   return { card: 'generic', content: [{ type: 'text', text: block.text }] }
 }
 
-/**
- * The canonical spec as plain JSON.
- *
- * The output schema declares `spec` with `additionalProperties: true`, which
- * the registry types as a `JsonValue` record. A `SketchSpec` is already pure
- * JSON data with no functions or class instances, so one cast bridges the
- * nominal gap with no runtime cost.
- * @param spec - the resolved spec.
- * @returns the spec widened to the schema's JSON record type.
- */
-function asJsonSpec(spec: SketchSpec): Record<string, JsonValue> {
+/** The canonical spec as plain JSON, bridged to the schema's JSON record type. */
+function asJsonSpec(spec: CanvasSpec): Record<string, JsonValue> {
   return spec as unknown as Record<string, JsonValue>
 }
 
@@ -303,65 +306,70 @@ export function apply(ctx: Context): void {
     name: 'tool:sketch_function',
     order: ctx.systemPrompt.getSectionOrder('TOOL_WEB_SEARCH'),
     text: 'When the answer involves a function graph, a curve comparison, a derivative, an area, or a '
-      + 'data chart, put a fenced block tagged aisketch-plot on the opening line (```aisketch-plot) in '
-      + 'your answer, containing the JSON spec {"expr":"x^2", ...}. Place the fence right after the '
-      + 'sentence it illustrates and continue the '
-      + 'explanation in the next paragraph, so the plot sits between text instead of at the end. do not '
-      + 'write HTML, SVG, or a plotting script yourself — the client renders a live figure from the JSON. '
-      + 'The `sketch_function` tool only validates the spec and returns a short computed summary.',
+      + 'Taylor approximation, put a fenced block tagged aisketch-plot on the opening line (```aisketch-plot) '
+      + 'in your answer, containing the canvas spec as JSON. Place the fence right after the sentence it '
+      + 'illustrates and continue the explanation in the next paragraph, so the plot sits between text '
+      + 'instead of at the end. A canvas is {"curves":["x^2", ...], "x":[min,max], "y":[min,max], '
+      + '"params":{"A":[min,max,value]}, "marks":[...], "legend":true}: curves are y=f(x) expressions '
+      + '(bare strings or {expr,color,dash,width,label} objects), x/y windows are optional, and every mark '
+      + 'is optional. Mark types: tangent {curve?,x?}, area {curve?,a,b,n?}, poly {curve?,center?,order?,label?}, '
+      + 'vline {x,curve?,y0?,y1?,label?,color?,dash?,width?} (a finite guide; y1 defaults to f(x), y0 to 0), '
+      + 'point {x,y,text?,dx?,dy?,color?}, text {x,y,text}. Colors are names or #rgb/#rrggbb; dash is '
+      + 'solid|dashed|dotted. Data charts (bar/pie/scatter) are NOT functions: use show_card with kind '
+      + '"chart" and real series data. do not write HTML, SVG, or a plotting script yourself — the client '
+      + 'renders a live figure from the JSON. The `sketch_function` tool only validates the spec and '
+      + 'returns a short computed summary.',
   })
 
   ctx.tools.register(defineTool({
     name: 'sketch_function',
     description:
-      'Validate a function plot spec and return a short computed summary. The public figure goes in the '
-      + 'FINAL answer as a fenced ```aisketch-plot block containing this exact JSON spec, placed between '
-      + 'the paragraphs it explains. '
-      + 'Give an expression in `expr` using x as the variable (sin, cos, tan, exp, log, sqrt, abs, and the '
-      + 'constants pi/e are available; implicit multiplication like `2x` or `3sin(x)` works). '
-      + 'Any other identifier becomes a tunable parameter — declare its slider bounds in `params` so the '
-      + 'user can animate it. Modes: `plain` (default curve), `compare` (several curves from `curves`), '
-      + '`tangent` (a tangent line at `probe`), `riemann` (an area sum over `a`..`b` with `n` rectangles), '
-      + '`taylor` (an expansion about `center` to degree `order`), and `data` (a named sample chart via '
-      + '`dataset`). Returns a description of what was drawn, including any computed quantity.',
+      'Validate a function-canvas spec and return a short computed summary. The public figure goes in '
+      + 'the FINAL answer as a fenced ```aisketch-plot block containing this exact JSON spec, placed '
+      + 'between the paragraphs it explains. '
+      + 'Give 1..8 curves as `curves` (bare "y=f(x)" strings, or {expr,color,dash,width,label} objects) '
+      + 'and optionally a single `expr` as the first curve. Expressions use x as the variable (sin, cos, '
+      + 'tan, exp, log, sqrt, abs, and pi/e are available; implicit multiplication like `2x` works). '
+      + 'Any other identifier becomes a tunable slider — declare bounds in `params` as [min,max,value]. '
+      + 'Set `x`/`y` with x_min/x_max/y_min/y_max to fix either window. Optional `marks` add a tangent '
+      + 'line, an area sum, a Taylor polynomial, a point or a text note; several marks can share one canvas. '
+      + 'Data charts belong to show_card kind "chart", not here. Returns what was drawn plus any computed '
+      + 'quantity.',
     parameters: {
       expr: {
         type: 'string',
-        required: true,
-        description: 'The function expression in x. Examples: "x^2", "A*sin(w*x+p)", "sin(x)/x", "exp(-x^2)".',
+        description: 'The first curve: a function of x, e.g. "x^2", "A*sin(w*x+p)", "sin(x)/x".',
       },
-      mode: {
-        type: 'string',
-        enum: [...MODES],
-        description: 'What to draw. Defaults to "plain".',
+      curves: {
+        type: 'array',
+        description:
+          'Additional curves, or all curves when no `expr` is given. Each is an expression string '
+          + '("sin(x)") or an object {expr, color?, dash?, width?, label?}. dash is solid|dashed|dotted; '
+          + 'color is a name or #rgb/#rrggbb; width is 0.5..6. At most 8 curves in total.',
       },
+      x_min: { type: 'number', description: 'Left edge of the x-window. Auto-fitted when omitted.' },
+      x_max: { type: 'number', description: 'Right edge of the x-window. Auto-fitted when omitted.' },
+      y_min: { type: 'number', description: 'Bottom of the y-window. Fitted from all curves when omitted.' },
+      y_max: { type: 'number', description: 'Top of the y-window. Fitted from all curves when omitted.' },
       params: {
         type: 'object',
         additionalProperties: true,
         description:
-          'Tunable parameters named in `expr`, each as [min, max, value]. Example: '
-          + '{"A": [0.2, 2, 1], "w": [0.5, 4, 1]}. The user can sweep the first one as an animation.',
+          'Parameters used by any curve, each as [min, max, value], e.g. {"A":[0.2,2,1]}. '
+          + 'The first parameter can be swept as an animation; all parameters get sliders.',
       },
-      x_min: { type: 'number', description: 'Left edge of the x-window. Chosen automatically when omitted.' },
-      x_max: { type: 'number', description: 'Right edge of the x-window. Chosen automatically when omitted.' },
-      curves: {
+      marks: {
         type: 'array',
         description:
-          'Extra curves for the compare mode, each "label, expr" or just "expr". '
-          + 'The separator must be a plain comma, not a colon; a label may contain spaces, letters and Chinese '
-          + 'but no parentheses or arithmetic operators ()+-*/^, which would make the whole line read as an '
-          + 'expression and fail. Examples: ["fast, 1 - exp(-4x)", "1 - exp(-4x)"]. `expr` is drawn alongside them.',
+          'Optional annotation layers. tangent: {type:"tangent",curve?,x?}; '
+          + 'area: {type:"area",curve?,a,b,n?}; poly: {type:"poly",curve?,center?,order?,label?}; '
+          + 'vline: {type:"vline",x,curve?,y0?,y1?,label?,color?,dash?,width?} (y1 defaults to f(x), y0 to 0); '
+          + 'point: {type:"point",x,y,text?,dx?,dy?,color?}; text: {type:"text",x,y,text}. '
+          + 'curve is a zero-based index into the curves list.',
       },
-      probe: { type: 'number', description: 'Tangent mode: where to draw the tangent line. Defaults to the window centre.' },
-      a: { type: 'number', description: 'Area mode: lower bound of the interval. Defaults to 0.' },
-      b: { type: 'number', description: 'Area mode: upper bound of the interval. Defaults to pi.' },
-      n: { type: 'number', description: `Area mode: rectangle count, 1..${MAX_RECTANGLES}. Defaults to 15.` },
-      order: { type: 'number', description: `Series mode: expansion degree, 1..${MAX_TAYLOR_ORDER}. Defaults to 5.` },
-      center: { type: 'number', description: 'Series mode: expansion point a. Defaults to 0.' },
-      dataset: {
-        type: 'string',
-        enum: ['line', 'bar', 'scatter', 'pie'],
-        description: 'Data mode: which sample chart to draw. Defaults to "line".',
+      legend: {
+        type: 'boolean',
+        description: 'Show a legend for labelled curves. Defaults to true when any curve has a label.',
       },
     },
     output: {
@@ -373,7 +381,7 @@ export function apply(ctx: Context): void {
             type: 'object',
             additionalProperties: true,
             required: true,
-            description: 'The canonical plot specification, replayed by the card.',
+            description: 'The canonical canvas specification, replayed by the card.',
           },
           summary: { type: 'string', required: true },
         },
@@ -386,41 +394,27 @@ export function apply(ctx: Context): void {
       const args = rawArgs as unknown as SketchArgs
       validateArgs(args)
 
-      const spec = toSpec(args)
-      // Parse before rendering so a typo surfaces as a tool error the model can
-      // correct, rather than as a silently blank card. Comparison lines go
-      // through the same splitter the geometry engine uses: a private regex
-      // here used to accept a label the card then refused, leaving a curve
-      // with zero points and only the primary line visible.
-      const exprError = compileError(spec.expr)
-      if (exprError !== null) throw new Error(`cannot parse expression: ${exprError}`)
-      for (const line of spec.compare ?? []) {
-        const { expr } = splitCurveLine(line)
-        const lineError = compileError(expr)
-        if (lineError !== null) {
-          throw new Error(
-            `cannot parse comparison curve "${line}": ${lineError}. `
-            + 'Use a plain comma in "label, expr" and keep parentheses and operators out of the label, '
-            + 'or pass just the expression.',
-          )
-        }
+      const upgraded = upgradeSpec(args as unknown)
+      if (upgraded === null) throw new Error('invalid canvas: no drawable curves')
+      // A model that guesses an unused parameter should still get a picture;
+      // keep the spec free of sliders that nothing can move.
+      const { params: declared, ...rest } = upgraded
+      const used = new Set(canvasParameters(upgraded))
+      const params: Record<string, CanvasParam> = {}
+      for (const [name, tuple] of Object.entries(declared ?? {})) {
+        if (used.has(name)) params[name] = tuple
+      }
+      const spec: CanvasSpec = { ...rest, ...Object.keys(params).length > 0 ? { params } : {} }
+      for (const expr of canvasExpressions(spec)) {
+        const error = compileError(expr)
+        if (error !== null) throw new Error(`cannot parse expression "${expr}": ${error}`)
       }
 
-      const mode = normalizeMode(spec.mode)
-      const geometry = resolveGeometry(spec, {
-        ...args.order !== undefined ? { taylorOrder: args.order } : {},
-        ...args.center !== undefined ? { center: args.center } : {},
-        ...args.probe !== undefined ? { probe: args.probe } : {},
-        ...args.a !== undefined ? { a: args.a } : {},
-        ...args.b !== undefined ? { b: args.b } : {},
-        ...args.n !== undefined ? { n: args.n } : {},
-      })
-
-      if (mode !== 'data' && geometry.curves.every((c) => c.points.length === 0)) {
-        throw new Error(`cannot parse expression: "${spec.expr}"`)
+      const geometry = resolveCanvas(spec)
+      if (geometry.curves.every((curve) => curve.points.length === 0)) {
+        throw new Error('cannot parse expression: no curve produced finite samples')
       }
-
-      return { spec: asJsonSpec(spec), summary: summarize(spec, mode, geometry) }
+      return { spec: asJsonSpec(spec), summary: summarize(spec, geometry) }
     },
     presentCall: presentSketchCall,
     presentResult: presentSketchResult,
