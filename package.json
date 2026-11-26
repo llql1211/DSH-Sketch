@@ -1,18 +1,18 @@
 {
-  "name": "dsh-aisketch",
-  "version": "0.3.0",
+  "name": "dsh-sketch",
+  "version": "0.3.0+fork.1",
   "private": true,
   "description": "AISketch for DSH: semantic conversation cards (table, flowchart, hand-drawn draw, teaching figures) plus expression-driven function plots, with zero base changes",
   "license": "MIT",
-  "author": "QinLuza",
+  "author": "llql1211",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/QinLuza/dsh-aisketch.git"
+    "url": "git+https://github.com/llql1211/DSH-Sketch.git"
   },
-  "homepage": "https://github.com/QinLuza/dsh-aisketch#readme",
+  "homepage": "https://github.com/llql1211/DSH-Sketch#readme",
   "bugs": {
-    "url": "https://github.com/QinLuza/dsh-aisketch/issues"
+    "url": "https://github.com/llql1211/DSH-Sketch/issues"
   },
   "scripts": {
     "test": "pnpm -r --no-bail run test",

@@ -1,6 +1,6 @@
 {
   "name": "@aisketch/client-ui-sketch",
-  "version": "0.3.0",
+  "version": "0.3.0+fork.1",
   "description": "AISketch browser card: renders the sketch_function tool view as a live Canvas plot",
   "type": "module",
   "license": "MIT",
@@ -47,14 +47,14 @@
       "platform": "web"
     }
   },
-  "author": "QinLuza",
+  "author": "llql1211",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/QinLuza/dsh-aisketch.git"
+    "url": "git+https://github.com/llql1211/DSH-Sketch.git"
   },
-  "homepage": "https://github.com/QinLuza/dsh-aisketch#readme",
+  "homepage": "https://github.com/llql1211/DSH-Sketch#readme",
   "bugs": {
-    "url": "https://github.com/QinLuza/dsh-aisketch/issues"
+    "url": "https://github.com/llql1211/DSH-Sketch/issues"
   },
   "keywords": [
     "dsh",

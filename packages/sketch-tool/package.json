@@ -1,6 +1,6 @@
 {
   "name": "@aisketch/sketch-tool",
-  "version": "0.3.0",
+  "version": "0.3.0+fork.1",
   "description": "Model-facing sketch_function tool: draws function graphs, calculus demos, and data charts from an expression instead of generated HTML",
   "type": "module",
   "license": "MIT",
@@ -27,14 +27,14 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
   },
-  "author": "QinLuza",
+  "author": "llql1211",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/QinLuza/dsh-aisketch.git"
+    "url": "git+https://github.com/llql1211/DSH-Sketch.git"
   },
-  "homepage": "https://github.com/QinLuza/dsh-aisketch#readme",
+  "homepage": "https://github.com/llql1211/DSH-Sketch#readme",
   "bugs": {
-    "url": "https://github.com/QinLuza/dsh-aisketch/issues"
+    "url": "https://github.com/llql1211/DSH-Sketch/issues"
   },
   "keywords": [
     "dsh",
