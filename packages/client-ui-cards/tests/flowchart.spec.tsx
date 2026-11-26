@@ -77,6 +77,34 @@ function boxOf(layout: FlowchartLayout, id: string): FlowchartBox {
   return found
 }
 
+/** The three points of an arrowhead: its tip, then the two base corners. */
+function headPoints(head: string): Array<{ x: number; y: number }> {
+  return head.split(' ').map((pair) => {
+    const [x, y] = pair.split(',').map(Number)
+    if (x === undefined || y === undefined) throw new Error(`bad arrowhead: ${head}`)
+    return { x, y }
+  })
+}
+
+/** The last coordinate pair of a path: where the shaft actually stops. */
+function pathEnd(d: string): { x: number; y: number } {
+  const numbers = d.match(/-?[\d.]+/g)?.map(Number) ?? []
+  const x = numbers[numbers.length - 2]
+  const y = numbers[numbers.length - 1]
+  if (x === undefined || y === undefined) throw new Error(`bad path: ${d}`)
+  return { x, y }
+}
+
+/** Whether a point sits on one of a box's four edges. */
+function onBoxEdge(point: { x: number; y: number }, box: FlowchartBox): boolean {
+  const eps = 1e-6
+  const withinX = point.x >= box.x - eps && point.x <= box.x + box.width + eps
+  const withinY = point.y >= box.y - eps && point.y <= box.y + box.height + eps
+  const onSide = (Math.abs(point.x - box.x) < eps || Math.abs(point.x - box.x - box.width) < eps) && withinY
+  const onTopOrBottom = (Math.abs(point.y - box.y) < eps || Math.abs(point.y - box.y - box.height) < eps) && withinX
+  return onSide || onTopOrBottom
+}
+
 /** Render one card through the real dispatch path. */
 function render(card: unknown, raw: unknown = {}): string {
   return renderToStaticMarkup(createElement(
@@ -90,28 +118,67 @@ describe('layout', () => {
     expect(layoutFlowchart(ifElse)).toEqual(layoutFlowchart(ifElse))
   })
 
-  it('ranks columns left to right and keeps payload order inside a column', () => {
+  it('ranks rows top to bottom and keeps payload order inside a row', () => {
     const layout = layoutFlowchart(ifElse)
-    const columns: number[] = []
-    for (const box of layout.boxes) columns.push(box.x)
-    expect(columns).toEqual([...columns].sort((left, right) => left - right))
-    expect(boxOf(layout, 'start').x).toBeLessThan(boxOf(layout, 'check').x)
-    expect(boxOf(layout, 'check').x).toBeLessThan(boxOf(layout, 'yes').x)
-    // `yes` is declared before `no`, so it also sits above it.
-    expect(boxOf(layout, 'yes').y).toBeLessThan(boxOf(layout, 'no').y)
+    expect(boxOf(layout, 'start').y).toBeLessThan(boxOf(layout, 'check').y)
+    expect(boxOf(layout, 'check').y).toBeLessThan(boxOf(layout, 'yes').y)
+    // `yes` is declared before `no`, so it also sits to its left.
+    expect(boxOf(layout, 'yes').x).toBeLessThan(boxOf(layout, 'no').x)
   })
 
   it('does not let a loop push its target past its source', () => {
     const layout = layoutFlowchart(ifElse)
-    expect(boxOf(layout, 'check').x).toBeLessThan(boxOf(layout, 'no').x)
+    expect(boxOf(layout, 'check').y).toBeLessThan(boxOf(layout, 'no').y)
   })
 
-  it('stacks two branches of one rank in the same column', () => {
+  it('places two branches of one rank side by side in the same row', () => {
     const layout = layoutFlowchart(ifElse)
     const yes = boxOf(layout, 'yes')
     const no = boxOf(layout, 'no')
-    expect(yes.x + yes.width / 2).toBeCloseTo(no.x + no.width / 2)
-    expect(yes.y).toBeLessThan(no.y)
+    expect(yes.y + yes.height / 2).toBeCloseTo(no.y + no.height / 2)
+    expect(yes.x).toBeLessThan(no.x)
+  })
+
+  it('lays a branching diagram taller in TB and wider in LR', () => {
+    const tb = layoutFlowchart(ifElse)
+    const lr = layoutFlowchart({ ...ifElse, direction: 'LR' })
+    expect(tb.height).toBeGreaterThan(lr.height)
+    expect(tb.width).toBeLessThan(lr.width)
+  })
+
+  it('routes LR arrows out of a right edge and into a left edge', () => {
+    const layout = layoutFlowchart({ ...ifElse, direction: 'LR' })
+    const arrow = layout.arrows.find((item) => item.from === 'check' && item.to === 'yes')
+    const target = boxOf(layout, 'yes')
+    expect(arrow?.head.split(' ')[0]).toBe(`${target.x},${target.y + target.height / 2}`)
+  })
+
+  it('lands every shaft on the midpoint of its arrowhead base', () => {
+    for (const direction of ['TB', 'LR'] as const) {
+      const layout = layoutFlowchart({ ...ifElse, direction })
+      for (const arrow of layout.arrows) {
+        const points = headPoints(arrow.head)
+        const [tip, baseA, baseB] = points
+        if (tip === undefined || baseA === undefined || baseB === undefined) throw new Error('head without points')
+        const baseMid = { x: (baseA.x + baseB.x) / 2, y: (baseA.y + baseB.y) / 2 }
+        const end = pathEnd(arrow.d)
+        const where = `${direction} ${arrow.from}->${arrow.to}`
+        expect(end.x, `${where} x`).toBeCloseTo(baseMid.x)
+        expect(end.y, `${where} y`).toBeCloseTo(baseMid.y)
+        expect(Math.hypot(tip.x - baseMid.x, tip.y - baseMid.y)).toBeGreaterThan(0)
+        expect(onBoxEdge(tip, boxOf(layout, arrow.to)), `${where} tip`).toBe(true)
+      }
+    }
+  })
+
+  it('points a backwards LR head up into the target bottom edge', () => {
+    const layout = layoutFlowchart({ ...ifElse, direction: 'LR' })
+    const retry = layout.arrows.find((arrow) => arrow.from === 'no' && arrow.to === 'check')
+    const points = retry === undefined ? [] : headPoints(retry.head)
+    const [tip, baseA, baseB] = points
+    if (tip === undefined || baseA === undefined || baseB === undefined) throw new Error('no retry arrow')
+    expect((baseA.y + baseB.y) / 2).toBeGreaterThan(tip.y)
+    expect(baseA.y).toBeCloseTo(baseB.y)
   })
 
   it('gives a decision more room than the same label as a process', () => {

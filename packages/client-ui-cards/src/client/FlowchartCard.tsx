@@ -84,7 +84,7 @@ export function FlowchartCard({ card, t }: CardRendererProps) {
       summary={summary}
       t={t}
     >
-      <div className={CLS.scroll}>
+      <div className={CLS.chartScroll}>
         <svg
           className={CLS.chart}
           width={layout.width}

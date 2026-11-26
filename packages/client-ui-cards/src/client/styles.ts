@@ -51,6 +51,7 @@ export const CLS = {
   kind: 'cd-kind',
   summary: 'cd-summary',
   scroll: 'cd-scroll',
+  chartScroll: 'cd-chart-scroll',
   table: 'cd-table',
   th: 'cd-th',
   td: 'cd-td',
@@ -125,12 +126,20 @@ const SHEET = `
   font-size: calc(11px + var(--dsh-content-font-delta, 0px));
   color: var(--dsw-alias-label-secondary, #5f6368);
 }
-.${CLS.scroll} {
-  max-height: 320px;
+.${CLS.scroll},
+.${CLS.chartScroll} {
   overflow: auto;
   border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.08));
   border-radius: 8px;
   background: var(--dsw-alias-bg-base, #fff);
+}
+.${CLS.scroll} {
+  max-height: 320px;
+}
+/* A flowchart is read as a whole: give a tall TB diagram more room before it
+   scrolls, without letting it swallow the chat column. */
+.${CLS.chartScroll} {
+  max-height: 480px;
 }
 .${CLS.table} {
   width: 100%;
@@ -216,10 +225,13 @@ const SHEET = `
   font-size: calc(12px + var(--dsh-content-font-delta, 0px));
   fill: var(--dsw-alias-label-primary, #1f1f1f);
 }
-/* The seats hug the picture instead of filling the column, so a small sketch
-   is not blown up and a centred illustration leaves the prose visible. */
+/* The seats hug their content instead of filling the column, so a small sketch
+   is not blown up and a centred illustration -- or flowchart -- leaves the
+   prose visible. A chart wider than the column is clamped back to full width,
+   so its left edge stays reachable by scrolling. */
 .${CLS.drawScroll},
-.${CLS.figureScroll} {
+.${CLS.figureScroll},
+.${CLS.chartScroll} {
   width: fit-content;
   max-width: 100%;
   margin: 0 auto;
@@ -296,12 +308,17 @@ const SHEET = `
   border: 1px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
 }
-.${CLS.dialog} .${CLS.scroll} {
+.${CLS.dialog} .${CLS.scroll},
+.${CLS.dialog} .${CLS.chartScroll} {
   max-height: none;
 }
+/* Keep the authored pixel size: stretching a tall TB chart to dialog width
+   inflates its height and shrinks its labels. The dialog itself scrolls. */
 .${CLS.dialog} .${CLS.chart} {
-  width: 100%;
+  width: auto;
   height: auto;
+  max-width: 100%;
+  max-height: 88vh;
 }
 /* The expanded copy trades the inline caps for the dialog's much larger seat. */
 .${CLS.dialog} .${CLS.art} {

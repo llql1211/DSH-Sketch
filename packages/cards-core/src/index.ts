@@ -456,6 +456,12 @@ export type FlowchartShape = 'terminal' | 'process' | 'decision'
 /** Every {@link FlowchartShape}, in the order the refusal message lists them. */
 export const FLOWCHART_SHAPES: readonly FlowchartShape[] = ['terminal', 'process', 'decision']
 
+/** Direction a flowchart is laid out in: top-to-bottom or left-to-right. */
+export type FlowchartDirection = 'TB' | 'LR'
+
+/** Every {@link FlowchartDirection}, in the order the refusal message lists them. */
+export const FLOWCHART_DIRECTIONS: readonly FlowchartDirection[] = ['TB', 'LR']
+
 /** One node of a {@link FLOWCHART_KIND} payload. */
 export interface FlowchartNode {
   /** Stable id the connections reference; unique inside one payload. */
@@ -476,10 +482,12 @@ export interface FlowchartEdge {
   readonly label?: string
 }
 
-/** Parsed {@link FLOWCHART_KIND} payload: declared nodes plus their connections. */
+/** Parsed {@link FLOWCHART_KIND} payload: declared nodes, connections and layout direction. */
 export interface FlowchartPayload {
   readonly nodes: readonly FlowchartNode[]
   readonly edges: readonly FlowchartEdge[]
+  /** Layout direction; an omitted direction means `TB` (top to bottom). */
+  readonly direction: FlowchartDirection
 }
 
 /** Narrow an unknown value to a non-array, non-null object. */
@@ -498,6 +506,11 @@ function isTableCell(value: unknown): value is TableCell {
 /** Narrow one unknown value to a {@link FlowchartShape}. */
 function isFlowchartShape(value: unknown): value is FlowchartShape {
   return typeof value === 'string' && (FLOWCHART_SHAPES as readonly string[]).includes(value)
+}
+
+/** Narrow one unknown value to a {@link FlowchartDirection}. */
+function isFlowchartDirection(value: unknown): value is FlowchartDirection {
+  return typeof value === 'string' && (FLOWCHART_DIRECTIONS as readonly string[]).includes(value)
 }
 
 /** Narrow one unknown value to a {@link DrawPen}. */
@@ -677,6 +690,15 @@ function checkFlowchartPayload(
 ): { readonly ok: true; readonly flowchart: FlowchartPayload } | { readonly ok: false; readonly error: string } {
   if (!isPlainObject(payload)) return { ok: false, error: 'flowchart payload must be a JSON object' }
 
+  let direction: FlowchartDirection = 'TB'
+  const rawDirection = payload.direction
+  if (rawDirection !== undefined && rawDirection !== null) {
+    if (!isFlowchartDirection(rawDirection)) {
+      return { ok: false, error: `flowchart direction must be one of: ${FLOWCHART_DIRECTIONS.join(', ')}` }
+    }
+    direction = rawDirection
+  }
+
   const rawNodes = payload.nodes
   if (!Array.isArray(rawNodes)) return { ok: false, error: 'flowchart payload needs a nodes array' }
   if (rawNodes.length === 0 || rawNodes.length > MAX_FLOWCHART_NODES) {
@@ -745,7 +767,7 @@ function checkFlowchartPayload(
     edges.push({ from, to })
   }
 
-  return { ok: true, flowchart: { nodes, edges } }
+  return { ok: true, flowchart: { nodes, edges, direction } }
 }
 
 /** Every letter that may start a path command, upper and lower case. */

@@ -12,10 +12,11 @@
  * ship. An estimate that is a little wide only costs padding; it never breaks
  * the picture.
  *
- * The algorithm is the ordinary layered one: longest-path ranking, one column
- * per rank, payload order inside a rank. A connection that points backwards --
- * a retry loop, an early exit -- is drawn in the right-hand gutter instead of
- * breaking the ranking, so a process with a loop still lays out.
+ * The algorithm is the ordinary layered one: longest-path ranking, one rank per
+ * layer (a row in TB, a column in LR), payload order inside a rank. A connection
+ * that points backwards -- a retry loop, an early exit -- is drawn in a gutter
+ * (right in TB, bottom in LR) instead of breaking the ranking, so a process with
+ * a loop still lays out. The direction is payload-declared, the geometry is not.
  */
 
 import type { FlowchartEdge, FlowchartNode, FlowchartPayload, FlowchartShape } from '@aisketch/cards-core'
@@ -47,16 +48,16 @@ const MAX_BOX_WIDTH = 260
 /** Widest decision box, in px. */
 const MAX_DECISION_WIDTH = 320
 
-/** Space between two columns, in px. */
-const COLUMN_GAP = 72
+/** Space between two ranks (rows in TB, columns in LR), in px. */
+const RANK_GAP = 72
 
-/** Space between two boxes of one column, in px. */
-const ROW_GAP = 26
+/** Space between two sibling boxes of one rank, in px. */
+const SIBLING_GAP = 30
 
 /** Space between the figure's frame and its content, in px. */
 const MARGIN = 16
 
-/** Space between the last column and the gutter a backwards connection uses, in px. */
+/** Space between the content and the gutter a backwards connection uses, in px. */
 const GUTTER_GAP = 20
 
 /** Horizontal step between two gutter connections, so they never overlap. */
@@ -88,7 +89,11 @@ export interface FlowchartArrow {
   readonly from: string
   readonly to: string
   readonly label?: string
-  /** Path data of the curve; the arrowhead is a separate {@link FlowchartArrow.head}. */
+  /**
+   * Path data of the curve. It stops at the midpoint of the arrowhead's base,
+   * so the shaft meets the head exactly instead of showing a sloped stub that
+   * lands off-centre. The head itself is {@link FlowchartArrow.head}.
+   */
   readonly d: string
   /** Arrowhead triangle, as SVG polygon points. */
   readonly head: string
@@ -274,6 +279,7 @@ function rankNodes(nodes: readonly FlowchartNode[], edges: readonly FlowchartEdg
  */
 export function layoutFlowchart(payload: FlowchartPayload): FlowchartLayout {
   const rank = rankNodes(payload.nodes, payload.edges)
+  const direction = payload.direction ?? 'TB'
 
   /** Boxes before placement, in payload order. */
   const drafted = payload.nodes.map((node) => {
@@ -291,50 +297,104 @@ export function layoutFlowchart(payload: FlowchartPayload): FlowchartLayout {
   }
   const ranks = [...columns.keys()].sort((left, right) => left - right)
 
-  const columnLeft = new Map<number, number>()
-  const columnWidth = new Map<number, number>()
-  let cursor = MARGIN
-  for (const index of ranks) {
-    let widest = 0
-    for (const box of columns.get(index) ?? []) widest = Math.max(widest, box.width)
-    columnLeft.set(index, cursor)
-    columnWidth.set(index, widest)
-    cursor += widest + COLUMN_GAP
-  }
-  const contentRight = cursor - COLUMN_GAP
-
-  const columnHeight = new Map<number, number>()
-  let tallest = 0
-  for (const index of ranks) {
-    const boxes = columns.get(index) ?? []
-    let height = 0
-    for (const box of boxes) height += box.height + ROW_GAP
-    height = Math.max(0, height - ROW_GAP)
-    columnHeight.set(index, height)
-    tallest = Math.max(tallest, height)
-  }
-
+  let contentRight = 0
+  let contentBottom = 0
   const boxes: FlowchartBox[] = []
   const placed = new Map<string, FlowchartBox>()
-  for (const index of ranks) {
-    const column = columns.get(index) ?? []
-    const left = columnLeft.get(index) ?? MARGIN
-    const width = columnWidth.get(index) ?? 0
-    let y = MARGIN + (tallest - (columnHeight.get(index) ?? 0)) / 2
-    for (const box of column) {
-      const drawn: FlowchartBox = {
-        id: box.node.id,
-        label: box.node.label,
-        shape: box.node.shape,
-        x: left + (width - box.width) / 2,
-        y,
-        width: box.width,
-        height: box.height,
-        lines: box.lines,
+
+  if (direction === 'TB') {
+    // One row per rank, siblings spread horizontally and centred on the widest row.
+    const rowTop = new Map<number, number>()
+    const rowHeight = new Map<number, number>()
+    const rowWidth = new Map<number, number>()
+    let cursorY = MARGIN
+    let widest = 0
+    for (const index of ranks) {
+      const row = columns.get(index) ?? []
+      let height = 0
+      let width = 0
+      for (const box of row) {
+        height = Math.max(height, box.height)
+        width += box.width + SIBLING_GAP
       }
-      boxes.push(drawn)
-      placed.set(drawn.id, drawn)
-      y += box.height + ROW_GAP
+      width = Math.max(0, width - SIBLING_GAP)
+      rowHeight.set(index, height)
+      rowWidth.set(index, width)
+      rowTop.set(index, cursorY)
+      cursorY += height + RANK_GAP
+      widest = Math.max(widest, width)
+    }
+    contentBottom = cursorY - RANK_GAP
+    contentRight = MARGIN + widest
+
+    for (const index of ranks) {
+      const row = columns.get(index) ?? []
+      const width = rowWidth.get(index) ?? 0
+      const top = rowTop.get(index) ?? MARGIN
+      const height = rowHeight.get(index) ?? 0
+      let x = MARGIN + (widest - width) / 2
+      for (const box of row) {
+        const drawn: FlowchartBox = {
+          id: box.node.id,
+          label: box.node.label,
+          shape: box.node.shape,
+          x,
+          y: top + (height - box.height) / 2,
+          width: box.width,
+          height: box.height,
+          lines: box.lines,
+        }
+        boxes.push(drawn)
+        placed.set(drawn.id, drawn)
+        x += box.width + SIBLING_GAP
+      }
+    }
+  } else {
+    // One column per rank, siblings stacked vertically; the gutter runs below.
+    const columnLeft = new Map<number, number>()
+    const columnWidth = new Map<number, number>()
+    let cursorX = MARGIN
+    for (const index of ranks) {
+      let widest = 0
+      for (const box of columns.get(index) ?? []) widest = Math.max(widest, box.width)
+      columnLeft.set(index, cursorX)
+      columnWidth.set(index, widest)
+      cursorX += widest + RANK_GAP
+    }
+    contentRight = cursorX - RANK_GAP
+
+    const columnHeight = new Map<number, number>()
+    let tallest = 0
+    for (const index of ranks) {
+      const column = columns.get(index) ?? []
+      let height = 0
+      for (const box of column) height += box.height + SIBLING_GAP
+      height = Math.max(0, height - SIBLING_GAP)
+      columnHeight.set(index, height)
+      tallest = Math.max(tallest, height)
+    }
+    contentBottom = MARGIN + tallest
+
+    for (const index of ranks) {
+      const column = columns.get(index) ?? []
+      const left = columnLeft.get(index) ?? MARGIN
+      const width = columnWidth.get(index) ?? 0
+      let y = MARGIN + (tallest - (columnHeight.get(index) ?? 0)) / 2
+      for (const box of column) {
+        const drawn: FlowchartBox = {
+          id: box.node.id,
+          label: box.node.label,
+          shape: box.node.shape,
+          x: left + (width - box.width) / 2,
+          y,
+          width: box.width,
+          height: box.height,
+          lines: box.lines,
+        }
+        boxes.push(drawn)
+        placed.set(drawn.id, drawn)
+        y += box.height + SIBLING_GAP
+      }
     }
   }
 
@@ -375,47 +435,100 @@ export function layoutFlowchart(payload: FlowchartPayload): FlowchartLayout {
     const inIndex = incomingSeen.get(edge.to) ?? 0
     incomingSeen.set(edge.to, inIndex + 1)
     const forward = (rank.get(edge.to) ?? 0) > (rank.get(edge.from) ?? 0)
+    const label = edge.label === undefined ? {} : { label: edge.label }
 
-    if (forward) {
-      const sx = source.x + source.width / 2 + fan(outIndex, outgoingTotal.get(edge.from) ?? 1, source.width)
-      const sy = source.y + source.height
-      const tx = target.x + target.width / 2 + fan(inIndex, incomingTotal.get(edge.to) ?? 1, target.width)
-      const ty = target.y
-      const middle = (sy + ty) / 2
+    if (direction === 'TB') {
+      if (forward) {
+        const sx = source.x + source.width / 2 + fan(outIndex, outgoingTotal.get(edge.from) ?? 1, source.width)
+        const sy = source.y + source.height
+        const tx = target.x + target.width / 2 + fan(inIndex, incomingTotal.get(edge.to) ?? 1, target.width)
+        const ty = target.y
+        const middle = (sy + ty) / 2
+        // Stop the shaft on the head's base, not on its tip: the last pixels
+        // would otherwise hide under the triangle and cross its base off-centre.
+        const by = ty - HEAD_LENGTH
+        arrows.push({
+          from: edge.from,
+          to: edge.to,
+          ...label,
+          d: `M ${sx} ${sy} C ${sx} ${middle} ${tx} ${middle} ${tx} ${by}`,
+          head: `${tx},${ty} ${tx - HEAD_HALF},${by} ${tx + HEAD_HALF},${by}`,
+          labelX: (sx + tx) / 2,
+          labelY: middle - 2,
+        })
+        continue
+      }
+
+      // Backwards: leave the right edge, run through the right-hand gutter,
+      // and re-enter from the target's right, leaving the rows untouched.
+      const lane = contentRight + GUTTER_GAP + gutter * GUTTER_STEP
+      gutter += 1
+      const sx = source.x + source.width
+      const sy = source.y + source.height / 2
+      const tx = target.x + target.width
+      const ty = target.y + target.height / 2
+      // The head points left into the target's right edge; its base faces the
+      // gutter the shaft comes from.
+      const bx = tx + HEAD_LENGTH
       arrows.push({
         from: edge.from,
         to: edge.to,
-        ...edge.label === undefined ? {} : { label: edge.label },
-        d: `M ${sx} ${sy} C ${sx} ${middle} ${tx} ${middle} ${tx} ${ty}`,
-        head: `${tx},${ty} ${tx - HEAD_HALF},${ty - HEAD_LENGTH} ${tx + HEAD_HALF},${ty - HEAD_LENGTH}`,
-        labelX: (sx + tx) / 2,
-        labelY: middle - 2,
+        ...label,
+        d: `M ${sx} ${sy} C ${lane} ${sy} ${lane} ${ty} ${bx} ${ty}`,
+        head: `${tx},${ty} ${bx},${ty - HEAD_HALF} ${bx},${ty + HEAD_HALF}`,
+        labelX: (sx + 6 * lane + tx) / 8,
+        labelY: (sy + ty) / 2 - 2,
       })
       continue
     }
 
-    // Backwards or sideways: leave from the right edge, run down the gutter,
-    // and re-enter the target from its right, so the ranking stays intact.
-    const lane = contentRight + GUTTER_GAP + gutter * GUTTER_STEP
+    if (forward) {
+      // LR: leave the source's right edge, enter the target's left edge.
+      const sx = source.x + source.width
+      const sy = source.y + source.height / 2 + fan(outIndex, outgoingTotal.get(edge.from) ?? 1, source.height)
+      const tx = target.x
+      const ty = target.y + target.height / 2 + fan(inIndex, incomingTotal.get(edge.to) ?? 1, target.height)
+      const middle = (sx + tx) / 2
+      // The head points right into the target's left edge; its base faces the
+      // shaft, which stops there rather than running under the triangle.
+      const bx = tx - HEAD_LENGTH
+      arrows.push({
+        from: edge.from,
+        to: edge.to,
+        ...label,
+        d: `M ${sx} ${sy} C ${middle} ${sy} ${middle} ${ty} ${bx} ${ty}`,
+        head: `${tx},${ty} ${bx},${ty - HEAD_HALF} ${bx},${ty + HEAD_HALF}`,
+        labelX: middle,
+        labelY: (sy + ty) / 2 - 2,
+      })
+      continue
+    }
+
+    // Backwards: leave the bottom edge, run through the bottom gutter, and
+    // re-enter from the target's bottom, leaving the columns untouched.
+    const lane = contentBottom + GUTTER_GAP + gutter * GUTTER_STEP
     gutter += 1
-    const sx = source.x + source.width
-    const sy = source.y + source.height / 2
-    const tx = target.x + target.width
-    const ty = target.y + target.height / 2
+    const sx = source.x + source.width / 2
+    const sy = source.y + source.height
+    const tx = target.x + target.width / 2
+    const ty = target.y + target.height
+    // The shaft climbs out of the bottom gutter, so the head must point up
+    // into the target's bottom edge: its base sits *below* the tip.
+    const by = ty + HEAD_LENGTH
     arrows.push({
       from: edge.from,
       to: edge.to,
-      ...edge.label === undefined ? {} : { label: edge.label },
-      d: `M ${sx} ${sy} C ${lane} ${sy} ${lane} ${ty} ${tx} ${ty}`,
-      head: `${tx},${ty} ${tx + HEAD_LENGTH},${ty - HEAD_HALF} ${tx + HEAD_LENGTH},${ty + HEAD_HALF}`,
-      labelX: (sx + 6 * lane + tx) / 8,
-      labelY: (sy + ty) / 2 - 2,
+      ...label,
+      d: `M ${sx} ${sy} C ${sx} ${lane} ${tx} ${lane} ${tx} ${by}`,
+      head: `${tx},${ty} ${tx - HEAD_HALF},${by} ${tx + HEAD_HALF},${by}`,
+      labelX: (sx + tx) / 2,
+      labelY: (sy + 6 * lane + ty) / 8,
     })
   }
 
   return {
-    width: contentRight + (gutter === 0 ? MARGIN : GUTTER_GAP + gutter * GUTTER_STEP + MARGIN),
-    height: tallest + MARGIN * 2,
+    width: contentRight + MARGIN + (direction === 'TB' && gutter > 0 ? GUTTER_GAP + gutter * GUTTER_STEP : 0),
+    height: contentBottom + MARGIN + (direction === 'LR' && gutter > 0 ? GUTTER_GAP + gutter * GUTTER_STEP : 0),
     boxes,
     arrows,
   }
