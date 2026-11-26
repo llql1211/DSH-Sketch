@@ -23,7 +23,7 @@ import type { ReactNode, RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
 import type { NS } from './locales.ts'
-import { pngFilename, saveElementAsPng } from './save-png.ts'
+import { copyElementAsPng, pngFilename, saveElementAsPng } from './save-png.ts'
 import { CLS } from './styles.ts'
 
 /** What the frame needs to draw the head and manage the overlay. */
@@ -47,6 +47,8 @@ export interface CardFrameProps {
  */
 export function CardFrame({ kind, title, summary, t, children }: CardFrameProps) {
   const [expanded, setExpanded] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const copiedTimer = useRef<number | null>(null)
   const inlineBody = useRef<HTMLDivElement | null>(null)
   const overlayBody = useRef<HTMLDivElement | null>(null)
 
@@ -60,6 +62,11 @@ export function CardFrame({ kind, title, summary, t, children }: CardFrameProps)
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [expanded])
 
+  // Cancel a pending "copied" reset so a timer never writes into a gone card.
+  useEffect(() => () => {
+    if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
+  }, [])
+
   /** Photograph one body and offer it as a PNG download. */
   const save = (body: RefObject<HTMLDivElement>): void => {
     const node = body.current
@@ -67,6 +74,18 @@ export function CardFrame({ kind, title, summary, t, children }: CardFrameProps)
     // A failed rasterization must never take the card down; the picture on
     // screen is untouched either way.
     void saveElementAsPng(node, pngFilename(title, kind)).catch(() => {})
+  }
+
+  /** Photograph one body and put its PNG on the clipboard. */
+  const copy = (body: RefObject<HTMLDivElement>): void => {
+    const node = body.current
+    if (node === null) return
+    void copyElementAsPng(node).then((ok) => {
+      if (!ok) return
+      setCopied(true)
+      if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 1600)
+    })
   }
 
   const body = (target: RefObject<HTMLDivElement>) => (
@@ -80,6 +99,15 @@ export function CardFrame({ kind, title, summary, t, children }: CardFrameProps)
       <span className={CLS.title}>{title}</span>
       <span className={CLS.kind}>{kind}</span>
       {summary === null ? null : <span className={CLS.summary}>{summary}</span>}
+      <button
+        type="button"
+        className={CLS.save}
+        aria-label={t('card.copyHint')}
+        title={t('card.copyHint')}
+        onClick={() => copy(target)}
+      >
+        ⧉ {copied ? t('card.copied') : t('card.copy')}
+      </button>
       <button
         type="button"
         className={CLS.save}

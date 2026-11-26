@@ -6,7 +6,7 @@
  * and a card kind forgetting to carry the control. The frame is shared by all
  * four native kinds, so one static-markup assertion covers the whole set.
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { CardSpec } from '@aisketch/cards-core'
 import { CardFrame } from '../src/client/CardFrame.tsx'
@@ -14,7 +14,7 @@ import { TableCard } from '../src/client/TableCard.tsx'
 import { FlowchartCard } from '../src/client/FlowchartCard.tsx'
 import { FigureCard } from '../src/client/FigureCard.tsx'
 import { DrawCard } from '../src/client/DrawCard.tsx'
-import { pngFilename, soleCanvas } from '../src/client/save-png.ts'
+import { copyElementAsPng, pngFilename, soleCanvas, soleDataImage } from '../src/client/save-png.ts'
 
 /** The translate stand-in returns the key, so the copy is visible in the markup. */
 const t = ((key: string) => key) as never
@@ -59,6 +59,61 @@ describe('soleCanvas', () => {
   })
 })
 
+describe('soleDataImage', () => {
+  /** Minimal `querySelectorAll` stub returning images with a `src` attribute. */
+  const seat = (sources: readonly (string | null)[]): Element => ({
+    querySelectorAll: (selector: string) => {
+      expect(selector).toBe('img')
+      return sources.map(src => ({
+        getAttribute: (name: string) => {
+          expect(name).toBe('src')
+          return src
+        },
+      }))
+    },
+  }) as unknown as Element
+
+  it('claims a data-URL picture so Save reuses the bytes the reader copied', () => {
+    expect(soleDataImage(seat(['data:image/png;base64,AAAA']))).not.toBeNull()
+  })
+
+  it('leaves remote images, multiple images and SVG-only cards to serialization', () => {
+    expect(soleDataImage(seat(['blob:http://local/1']))).toBeNull()
+    expect(soleDataImage(seat([]))).toBeNull()
+    expect(soleDataImage(seat(['data:image/png;base64,AA', 'data:image/png;base64,BB']))).toBeNull()
+  })
+})
+
+describe('copyElementAsPng', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('puts a data-URL picture on the clipboard without downloading it', async () => {
+    const writes: unknown[] = []
+    class FakeClipboardItem {
+      constructor(readonly data: Record<string, Blob>) {}
+    }
+    vi.stubGlobal('ClipboardItem', FakeClipboardItem)
+    vi.stubGlobal('navigator', {
+      clipboard: { write: async (items: unknown[]) => { writes.push(items) } },
+    })
+    const body = {
+      querySelector: () => null,
+      querySelectorAll: (selector: string) => selector === 'img'
+        ? [{ getAttribute: () => 'data:image/png;base64,iVBORw0KGgo=' }]
+        : [],
+    } as unknown as Element
+
+    expect(await copyElementAsPng(body)).toBe(true)
+    expect(writes).toHaveLength(1)
+  })
+
+  it('reports an unsupported clipboard instead of throwing', async () => {
+    vi.stubGlobal('navigator', {})
+    const body = { querySelector: () => null, querySelectorAll: () => [] } as unknown as Element
+    expect(await copyElementAsPng(body)).toBe(false)
+  })
+})
+
 describe('the save control on cards', () => {
   it('renders the button and a body wrapper that can be photographed', () => {
     const html = renderToStaticMarkup(
@@ -67,6 +122,8 @@ describe('the save control on cards', () => {
       </CardFrame>,
     )
     expect(html).toContain('cd-save')
+    expect(html).toContain('⧉ card.copy')
+    expect(html).toContain('card.copyHint')
     expect(html).toContain('⇩ card.save')
     expect(html).toContain('card.saveHint')
     expect(html).toContain('cd-save-body')
@@ -90,6 +147,7 @@ describe('the save control on cards', () => {
             ? renderToStaticMarkup(<FigureCard card={card} t={t} />)
             : renderToStaticMarkup(<DrawCard card={card} t={t} />)
       expect(html).toContain('cd-save')
+      expect(html).toContain('⧉ card.copy')
       expect(html).toContain('cd-save-body')
     })
   }

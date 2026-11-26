@@ -2,7 +2,7 @@
 
 给 [DSH](https://github.com/deepseek-ai/deepseek-harness)（DeepSeek Harness）加一条「**模型只给结构，客户端负责作图**」的卡片通道。
 
-> 本项目是 [QinLuza/dsh-aisketch](https://github.com/QinLuza/dsh-aisketch) 的 fork（MIT © QinLuza），由 llql1211 维护。相对上游的改动：表格回归正文 Markdown；`draw` / `figure` 图片按比例居中、不再撑满与纵向滚动；图表可一键保存 PNG；兼容 DSH 0.2.2。
+> 本项目是 [QinLuza/dsh-aisketch](https://github.com/QinLuza/dsh-aisketch) 的 fork（MIT © QinLuza），由 llql1211 维护。相对上游的改动：表格回归正文 Markdown；`draw` / `figure` 图片按比例居中、不再撑满与纵向滚动；图片可右键复制、函数图可一键复制、图表可一键保存 PNG；兼容 DSH 0.2.2。
 
 **English TL;DR** — DSH-Sketch renders graphics from JSON written inline in the assistant's answer. The model supplies structure only; a deterministic engine owns geometry. Tables stay as ordinary Markdown in the prose. MIT, zero base changes.
 
@@ -101,6 +101,8 @@
 
 **显示尺寸**：`draw` 与 `figure` 图片保持画布比例、居中显示，宽高分别封顶 760px / 456px，且不会被放大到超过画布原尺寸。这样既不会在框内出现纵向滚动，也不会让一张图撑满会话栏、把正文挤出视野；需要看细节时点卡片右上角 ⤢，放大层会放宽到 1200px / 86vh。
 
+**复制图片**：卡片右上角 ⧉「复制图片」把当前画面直接写进剪贴板，不必先点 ⇩ 下载再找文件，成功后按钮短暂显示「已复制」。`draw` 上屏的是带 PNG data URL 的 `<img>`，复制与 ⇩ 保存用的是同一份字节；`figure` / `flowchart` 是实时 SVG，复制时现栅格化，保留屏幕上的清晰度。
+
 ### 3. `show_card` → `figure`
 
 教学示意图不塞进 `draw`：前者怕错，后者怕平庸。`figure` 只接受模板与语义参数，坐标、角度、锚点、标签位置全部由渲染器构造。
@@ -146,6 +148,8 @@
 </p>
 
 带 `params` 时出参数滑块；拖拽期间 y 窗口冻结，另有追踪读数（悬停、点按钉住、键盘步进）。交互态全部在组件本地，不写回 spec、不发 Host 调用。
+
+函数图是持续重绘的实时 canvas，不能像 `draw` 那样换成静态 `<img>`；卡片上的 ⧉「复制图片」用 Clipboard API 把当前画面直接写进剪贴板，按钮短暂显示「已复制」，同样不用先下载。
 
 ---
 

@@ -2,20 +2,22 @@
  * Export a rendered card as a PNG image.
  *
  * The four native kinds reach the page in three different shapes: a table is
- * live DOM, a flowchart/figure is SVG, and a draw card is a canvas snapshot of
- * hidden SVG. Rasterizing the mounted body covers all three without a second
- * renderer, so the exported picture is exactly what the user saw.
+ * live DOM, a flowchart/figure is SVG, and a draw card is an image of a hidden
+ * SVG's bitmap snapshot. Rasterizing the mounted body covers all three without
+ * a second renderer, so the exported picture is exactly what the user saw.
  *
  * Two things do not survive being serialized into an image document: the
  * injected stylesheet (which carries the host's CSS tokens) and a canvas's
  * pixels. Computed styles are inlined from the live nodes before serialization,
  * and canvases are swapped for `<img>` of their own data URL. The result is a
  * self-contained SVG that any browser can decode, which is then painted into a
- * canvas at device resolution and downloaded.
+ * canvas at device resolution and downloaded. A draw card's bitmap already is
+ * a PNG data URL, so it takes a direct route instead. The same bytes can be
+ * put on the clipboard from a card's copy button, without downloading first.
  *
  * The pure helpers at the top are exported so the naming and the markup
- * preparation can be tested without a browser; only `saveElementAsPng` needs
- * the DOM.
+ * preparation can be tested without a browser; only the two export functions
+ * need the DOM.
  */
 
 /** File-name characters that are unsafe or reserved on common filesystems. */
@@ -210,15 +212,39 @@ function download(canvas: HTMLCanvasElement, filename: string): void {
   canvas.toBlob((blob) => {
     if (blob === null) return
     const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
+    downloadUrl(url, filename)
     // Revoke on the next turn: some browsers start the download asynchronously.
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }, 'image/png')
+}
+
+/** Click a detached download link so the browser saves a URL under a name. */
+function downloadUrl(url: string, filename: string): void {
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+}
+
+/**
+ * The data-URL image that is a card's whole picture, if there is one.
+ *
+ * A draw card shows its bitmap as an `<img>` so it has a real source. That
+ * image already holds the exact PNG the reader sees, so sending it through
+ * {@link markupFor} would only risk losing it: an image document blocks the
+ * external reference, and a data-URL image inside a foreignObject taints
+ * Chromium's final `toBlob()`. The same bytes go straight to save or copy.
+ * @param element - the export seat.
+ * @returns the image when it is the seat's only picture, else null.
+ */
+export function soleDataImage(element: Element): HTMLImageElement | null {
+  const images = element.querySelectorAll('img')
+  if (images.length !== 1) return null
+  const image = images[0] as HTMLImageElement
+  const src = image.getAttribute('src') ?? ''
+  return src.startsWith('data:image/') ? image : null
 }
 
 /**
@@ -239,15 +265,86 @@ export function soleCanvas(element: Element): HTMLCanvasElement | null {
 }
 
 /**
+ * The picture seat of a card body: the marked wrapper, or the body itself.
+ *
+ * Illustration cards centre their picture inside the card body; photographing
+ * the full-width body would bake those side gutters into the PNG.
+ */
+function exportSeat(element: Element): Element {
+  return element.querySelector<HTMLElement>('[data-card-export]') ?? element
+}
+
+/** The pixel bounds a mounted picture should be rasterized at. */
+function exportBounds(target: Element): { width: number; height: number; scale: number } {
+  const rect = target.getBoundingClientRect()
+  const scrollable = target as Element & { scrollWidth?: number; scrollHeight?: number }
+  const width = Math.max(1, Math.ceil(Math.max(rect.width, scrollable.scrollWidth ?? 0)))
+  const height = Math.max(1, Math.ceil(Math.max(rect.height, scrollable.scrollHeight ?? 0)))
+  const dpr = typeof window === 'undefined' ? 1 : (window.devicePixelRatio || 1)
+  const scale = Math.max(1, Math.min(2, dpr, MAX_EXPORT_EDGE / Math.max(width, height)))
+  return { width, height, scale }
+}
+
+/** Decode a PNG data URL without a network round-trip, for the clipboard. */
+function dataUrlBlob(src: string): Blob | null {
+  const comma = src.indexOf(',')
+  if (comma === -1) return null
+  try {
+    const binary = atob(src.slice(comma + 1))
+    const bytes = new Uint8Array(binary.length)
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+    return new Blob([bytes], { type: 'image/png' })
+  } catch {
+    return null
+  }
+}
+
+/** Encode the picture of a mounted body as a PNG blob, without downloading it. */
+async function pictureBlob(element: Element): Promise<Blob | null> {
+  const target = exportSeat(element)
+  const image = soleDataImage(target)
+  if (image !== null) {
+    const src = image.getAttribute('src')
+    return src === null ? null : dataUrlBlob(src)
+  }
+  const canvas = soleCanvas(target)
+  if (canvas !== null) {
+    return await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+  }
+  const { width, height, scale } = exportBounds(target)
+  const raster = await rasterize(markupFor(target, width, height), width, height, scale)
+  return await new Promise<Blob | null>((resolve) => raster.toBlob(resolve, 'image/png'))
+}
+
+/**
+ * Copy one mounted card body's picture to the clipboard as a PNG.
+ *
+ * A failed copy -- no permission, an older browser, a tainted canvas -- is
+ * reported as false rather than thrown: Save is still there, and a card must
+ * never break over a clipboard prompt.
+ * @param element - the body to photograph.
+ * @returns whether the browser accepted the copy.
+ */
+export async function copyElementAsPng(element: Element): Promise<boolean> {
+  if (typeof navigator === 'undefined' || navigator.clipboard === undefined) return false
+  if (typeof ClipboardItem === 'undefined') return false
+  try {
+    const blob = await pictureBlob(element)
+    if (blob === null) return false
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
  * Export one mounted card body as a downloaded PNG.
  * @param element - the body to photograph.
  * @param filename - the suggested download name.
  */
 export async function saveElementAsPng(element: Element, filename: string): Promise<void> {
-  // Illustration cards centre their picture inside the card body. Photographing
-  // the full-width body would bake those side gutters into the PNG, so export
-  // the picture's own seat when the renderer marks one.
-  const target = element.querySelector<HTMLElement>('[data-card-export]') ?? element
+  const target = exportSeat(element)
   // A canvas-backed picture takes the direct route: the canvas is the pixels,
   // and serializing it through SVG is what taints the export in Chromium.
   const canvas = soleCanvas(target)
@@ -255,11 +352,12 @@ export async function saveElementAsPng(element: Element, filename: string): Prom
     download(canvas, filename)
     return
   }
-  const rect = target.getBoundingClientRect()
-  const scrollable = target as Element & { scrollWidth?: number; scrollHeight?: number }
-  const width = Math.max(1, Math.ceil(Math.max(rect.width, scrollable.scrollWidth ?? 0)))
-  const height = Math.max(1, Math.ceil(Math.max(rect.height, scrollable.scrollHeight ?? 0)))
-  const dpr = typeof window === 'undefined' ? 1 : (window.devicePixelRatio || 1)
-  const scale = Math.max(1, Math.min(2, dpr, MAX_EXPORT_EDGE / Math.max(width, height)))
+  const image = soleDataImage(target)
+  if (image !== null) {
+    const src = image.getAttribute('src')
+    if (src !== null) downloadUrl(src, filename)
+    return
+  }
+  const { width, height, scale } = exportBounds(target)
   download(await rasterize(markupFor(target, width, height), width, height, scale), filename)
 }

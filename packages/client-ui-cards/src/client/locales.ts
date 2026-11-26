@@ -25,6 +25,9 @@ export const zh = {
   'card.close': '关闭',
   'card.save': '保存',
   'card.saveHint': '保存为 PNG 图片',
+  'card.copy': '复制图片',
+  'card.copyHint': '复制图片到剪贴板',
+  'card.copied': '已复制',
 } satisfies Record<string, string>
 
 /** The cards namespace key union. */
@@ -52,6 +55,9 @@ export const en = {
   'card.close': 'Close',
   'card.save': 'Save',
   'card.saveHint': 'Save as PNG image',
+  'card.copy': 'Copy image',
+  'card.copyHint': 'Copy the picture to the clipboard',
+  'card.copied': 'Copied',
 } satisfies Record<CardKey, string>
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

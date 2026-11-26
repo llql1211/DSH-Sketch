@@ -39,6 +39,8 @@ describe('the save control on plots', () => {
     const html = renderToStaticMarkup(<SketchFigure spec={{ expr: 'sin(x)' }} t={t} />)
     expect(html).toContain('data-tool="sketch_function"')
     expect(html).toContain('sk-action')
+    expect(html).toContain('⧉ card.copy')
+    expect(html).toContain('card.copyHint')
     expect(html).toContain('⇩ card.save')
     expect(html).toContain('card.saveHint')
     expect(html).toContain('<canvas')
