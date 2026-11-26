@@ -13,6 +13,7 @@
  * the persisted `tool/call` arguments.
  */
 
+import { CHART_KIND, checkChartPayload, parseChartPayload, summarizeChart } from './chart.ts'
 import { FIGURE_KIND, checkFigurePayload, parseFigurePayload, summarizeFigure } from './figure.ts'
 
 /** Wire name of the Tool that emits a card; the client projects its node on it. */
@@ -1614,7 +1615,8 @@ export function parseDrawPayload(payload: unknown): DrawPayload | null {
 
 /**
  * Validate the Tool's raw arguments: the shared envelope plus, for a
- * {@link TABLE_KIND} or {@link FLOWCHART_KIND} card, the payload shape itself.
+ * {@link TABLE_KIND}, {@link FLOWCHART_KIND}, {@link FIGURE_KIND}, {@link DRAW_KIND}
+ * or {@link CHART_KIND} card, the payload shape itself.
  * An unknown kind is admitted by design -- forward compatibility is the client's
  * raw fallback, not a Host-side allowlist.
  * @param value - the model's Tool arguments.
@@ -1639,6 +1641,10 @@ export function validateCardArgs(value: unknown): CardValidation {
   if (result.card.kind === FIGURE_KIND) {
     const figure = checkFigurePayload(result.card.payload)
     if (!figure.ok) return { ok: false, error: figure.error }
+  }
+  if (result.card.kind === CHART_KIND) {
+    const chart = checkChartPayload(result.card.payload)
+    if (!chart.ok) return { ok: false, error: chart.error }
   }
   return result
 }
@@ -1680,6 +1686,12 @@ export function summarizeCard(card: CardSpec): string {
       return `Showed a "figure" card${title}: ${summarizeFigure(figure)}.`
     }
   }
+  if (card.kind === CHART_KIND) {
+    const chart = parseChartPayload(card.payload)
+    if (chart !== null) {
+      return `Showed a "chart" card${title}: ${summarizeChart(chart)}.`
+    }
+  }
   const keys = Object.keys(card.payload)
   const shape = keys.length === 0 ? 'no payload keys' : `payload keys: ${keys.slice(0, 8).join(', ')}`
   return `Showed a "${card.kind}" card${title} (${shape}).`
@@ -1717,3 +1729,9 @@ export * from './draw-diagnostics.ts'
  * in the client half; the model never supplies geometry.
  */
 export * from './figure.ts'
+
+/**
+ * Real-data chart validation and its model-facing summary. The renderer lives
+ * in the client half; the model supplies series and categories, never geometry.
+ */
+export * from './chart.ts'

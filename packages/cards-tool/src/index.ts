@@ -18,8 +18,9 @@ import type { ToolCallView, ToolResultView } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import {
-  CARD_TOOL_NAME, DRAW_KIND, FIGURE_KIND, FLOWCHART_KIND, MAX_DRAW_ELEMENTS, MAX_FLOWCHART_EDGES, MAX_FLOWCHART_LABEL_LENGTH,
-  MAX_FLOWCHART_NODES, MAX_KIND_LENGTH, MAX_PAYLOAD_LENGTH,
+  CARD_TOOL_NAME, CHART_KIND, DRAW_KIND, FIGURE_KIND, FLOWCHART_KIND, MAX_CHART_CATEGORIES, MAX_CHART_LABEL_LENGTH,
+  MAX_CHART_POINTS, MAX_CHART_SERIES, MAX_CHART_VALUE, MAX_DRAW_ELEMENTS, MAX_FLOWCHART_EDGES,
+  MAX_FLOWCHART_LABEL_LENGTH, MAX_FLOWCHART_NODES, MAX_KIND_LENGTH, MAX_PAYLOAD_LENGTH,
   MAX_TITLE_LENGTH, analyzeDraw, buildDrawDisplayList, formatDrawDiagnostics, parseDrawPayload,
   summarizeCard, validateCardArgs,
 } from '@aisketch/cards-core'
@@ -111,6 +112,23 @@ const FIGURE_PAYLOAD_HINT =
   + 'Examples: { template: "incline_force", params: { angleDeg: 30, massKg: 2, frictionCoeff: 0.5, showComponents: true } }, '
   + '{ template: "connected_bodies", params: { surfaceMassKg: 2, hangingMassKg: 1.5, frictionCoeff: 0.3 } } '
   + '{ template: "orbital_diagram", params: { symbol: "Zn" } } or { template: "atom_shell", params: { symbol: "Na" } }.'
+
+/**
+ * The data-chart payload, spelled out so a first call carries real numbers.
+ *
+ * Unlike `figure`, this kind is not about derived geometry: the model owns the
+ * data, and the renderer owns every axis, bar, slice and legend. The ceiling
+ * list is here so a refused call tells the model exactly what to shorten.
+ */
+const CHART_PAYLOAD_HINT =
+  `A "${CHART_KIND}" card takes { type?: "line"|"bar"|"scatter"|"pie", series: [{ label, data: [...] }], `
+  + `categories?: [...] }. type defaults to "line"; 1..${MAX_CHART_SERIES} series, each with a non-empty label `
+  + `of at most ${MAX_CHART_LABEL_LENGTH} characters and 1..${MAX_CHART_POINTS} `
+  + `finite numbers of magnitude at most ${MAX_CHART_VALUE}; categories holds 0..${MAX_CHART_CATEGORIES} strings `
+  + `of at most ${MAX_CHART_LABEL_LENGTH} characters. A pie uses only the first series and ignores the rest. `
+  + 'Send real data from the request, never hardcoded demo numbers. '
+  + 'Example: { "type": "line", "series": [{"label":"上学期","data":[72,85,63]},'
+  + '{"label":"下学期","data":[80,90,77]}], "categories":["语文","数学","英语"] }.'
 
 /**
  * The draw payload's syntax, spelled out so a first call is valid. The sample
@@ -209,10 +227,11 @@ export function apply(ctx: Context): void {
       + 'inside the answer, so the picture sits between the paragraphs that explain it. Write a fenced '
       + 'block with the language tag aisketch on the opening line (```aisketch) containing a JSON card '
       + 'spec { "kind": ..., "title"?: ..., "payload": ... } for '
-      + 'a flowchart, a hand-drawn illustration, or a teaching figure. Supported kinds: "flowchart", '
-      + '"draw", "figure". never write HTML, SVG, or a plotting script yourself: the client renders the '
-      + 'card natively from the JSON. For a function graph use a fenced ```aisketch-plot block containing '
-      + '{"expr":"x^2", ...}. Place each fence right after the sentence it illustrates and follow it with '
+      + 'a flowchart, a hand-drawn illustration, a teaching figure, or a real-data chart. Supported kinds: '
+      + '"flowchart", "draw", "figure", "chart". never write HTML, SVG, or a plotting script yourself: '
+      + 'the client renders the card natively from the JSON. Write tables as Markdown in the answer, '
+      + 'function graphs in a fenced ```aisketch-plot block containing {"expr":"x^2", ...}, and '
+      + 'real-data charts as a "chart" card. Place each fence right after the sentence it illustrates and follow it with '
       + 'the next paragraph, so text and picture alternate instead of stacking all pictures at the end. '
       + 'When the user asks for a picture (画一张 / 画个图 / 手绘 / 素描 / doodle / pixel art) use kind "draw" '
       + 'and list its elements -- pen paths, shapes, text, tape, pixels. For a teaching or scientific '
@@ -220,6 +239,7 @@ export function apply(ctx: Context): void {
       + 'params; the renderer owns the geometry, so never send coordinates or SVG. Do not emulate a '
       + 'picture with a table, emoji, ASCII art, or colored squares: a freehand picture is a "draw" card, '
       + 'while a teaching/scientific diagram is a "figure" card. '
+      + `${CHART_PAYLOAD_HINT} `
       + `Keep every payload under ${MAX_PAYLOAD_LENGTH} characters. `
       + 'A "draw" card comes back with a picture of what you sent plus a machine self-check. '
       + `${DRAW_STYLE_GUIDANCE} `
@@ -237,12 +257,13 @@ export function apply(ctx: Context): void {
     name: CARD_TOOL_NAME,
     description:
       'Validate a graphics card spec and, for drawings, get a private rasterized preview for your own '
-      + 'inspection. Pass `kind` ("flowchart", "figure" or "draw"), an optional `title`, and a `payload` '
-      + 'object. Tables are NOT supported: write them as Markdown in the reply. For a freehand doodle, '
+      + 'inspection. Pass `kind` ("flowchart", "figure", "chart" or "draw"), an optional `title`, and a `payload` '
+      + 'object. Write tables as Markdown in the reply, function graphs in an aisketch-plot fence, and '
+      + 'real-data charts with kind "chart". For a freehand doodle, '
       + 'illustration or pixel art use kind "draw"; for a teaching or scientific diagram (forces, atomic '
       + 'shells) use kind "figure" with a template and semantic params; never emulate a picture with a '
       + 'table, emoji, ASCII art, or colored squares. '
-      + `${FLOWCHART_PAYLOAD_HINT} ${FIGURE_PAYLOAD_HINT} ${DRAW_PAYLOAD_HINT} Unknown kinds are accepted `
+      + `${FLOWCHART_PAYLOAD_HINT} ${FIGURE_PAYLOAD_HINT} ${CHART_PAYLOAD_HINT} ${DRAW_PAYLOAD_HINT} Unknown kinds are accepted `
       + 'for validation but have no client renderer. A drawing can be returned as a private draft '
       + '(draft:true): you get a rendered preview plus a machine self-check, but no card is shown. '
       + 'The result carries a ref handle. The public picture goes in the FINAL answer as a fenced ```aisketch '
@@ -255,7 +276,7 @@ export function apply(ctx: Context): void {
       kind: {
         type: 'string',
         required: true,
-        description: `Renderer key: "${FLOWCHART_KIND}", "${FIGURE_KIND}" or "${DRAW_KIND}". Tables are not supported; write them as Markdown in the reply. Letters, digits, ".", "_" or "-", at most ${MAX_KIND_LENGTH} characters.`,
+        description: `Renderer key: "${FLOWCHART_KIND}", "${FIGURE_KIND}", "${CHART_KIND}" or "${DRAW_KIND}". Tables are not supported; write them as Markdown in the reply, function graphs in an aisketch-plot fence, and real-data charts with kind "${CHART_KIND}". Letters, digits, ".", "_" or "-", at most ${MAX_KIND_LENGTH} characters.`,
       },
       title: {
         type: 'string',
@@ -265,7 +286,7 @@ export function apply(ctx: Context): void {
         type: 'object',
         additionalProperties: true,
         required: true,
-        description: `Kind-owned JSON object. ${FLOWCHART_PAYLOAD_HINT} ${FIGURE_PAYLOAD_HINT} ${DRAW_PAYLOAD_HINT}`,
+        description: `Kind-owned JSON object. ${FLOWCHART_PAYLOAD_HINT} ${FIGURE_PAYLOAD_HINT} ${CHART_PAYLOAD_HINT} ${DRAW_PAYLOAD_HINT}`,
       },
       preview: {
         type: 'boolean',

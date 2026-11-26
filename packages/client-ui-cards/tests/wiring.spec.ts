@@ -95,11 +95,13 @@ describe('the service gate', () => {
       'client-ui-cards: flowchart renderer',
       'client-ui-cards: draw renderer',
       'client-ui-cards: figure renderer',
+      'client-ui-cards: chart renderer',
       'client-ui-cards: card refs',
     ])
     expect(wiring.rendererKinds).toContain('flowchart')
     expect(wiring.rendererKinds).toContain('draw')
     expect(wiring.rendererKinds).toContain('figure')
+    expect(wiring.rendererKinds).toContain('chart')
     expect(wiring.rendererKinds).not.toContain('table')
   })
 })

@@ -140,6 +140,11 @@ const SHEET = `
    scrolls, without letting it swallow the chat column. */
 .${CLS.chartScroll} {
   max-height: 480px;
+  /* The canvas already carries the picture frame (.art). A second border here
+     would sit flush against it and read as one thick double line. */
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .${CLS.table} {
   width: 100%;

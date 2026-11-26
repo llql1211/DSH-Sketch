@@ -291,6 +291,68 @@ describe('showing a teaching figure', () => {
   })
 })
 
+describe('showing a data chart', () => {
+  const scores = {
+    type: 'line',
+    series: [
+      { label: '上学期', data: [72, 85, 63] },
+      { label: '下学期', data: [80, 90, 77] },
+    ],
+    categories: ['语文', '数学', '英语'],
+  }
+
+  it('admits real data and summarizes the payload', async () => {
+    const result = await run(ctx.tools, call('show_card', { kind: 'chart', title: '成绩', payload: scores }))
+    expect(result.isError).toBeFalsy()
+    expect(result.value).toMatchObject({ card: { kind: 'chart', title: '成绩' } })
+    expect(textOf(result.content)).toContain('Showed a "chart" card titled "成绩": line chart: 2 series, 6 point(s)')
+    expect(textOf(result.content)).toContain('categories 语文, 数学, 英语')
+  })
+
+  it('defaults the type when the model omits it, including for a pie', async () => {
+    const result = await run(ctx.tools, call('show_card', {
+      kind: 'chart',
+      payload: { series: [{ label: '分布', data: [35, 65] }] },
+    }))
+    expect(result.isError).toBeFalsy()
+    expect(textOf(result.content)).toContain('line chart: 1 series, 2 point(s), no category captions')
+  })
+
+  it('refuses a malformed chart with a correction the model can act on', async () => {
+    const result = await run(ctx.tools, call('show_card', {
+      kind: 'chart',
+      payload: { series: [{ label: 'A', data: ['72'] }] },
+    }))
+    expect(result.isError).toBe(true)
+    expect(textOf(result.content)).toContain('finite numbers')
+  })
+
+  it('routes Markdown, aisketch-plot and chart explicitly in the tool schema', () => {
+    const schema = ctx.tools.schemas().find(candidate => candidate.name === 'show_card')
+    const serialized = JSON.stringify(schema)
+    expect(serialized).toContain('write them as Markdown in the reply, function graphs in an aisketch-plot fence')
+    expect(serialized).toContain('real-data charts with kind')
+    expect(serialized).toContain('上学期')
+    expect(serialized).toContain('语文')
+    expect(serialized).toContain('A pie uses only the first series')
+  })
+
+  it('states the routing rule and a complete example in the system prompt', async () => {
+    const prompt = renderPrompt(await ctx.systemPrompt.assemble({}))
+    expect(prompt).toContain('real-data charts as a "chart" card')
+    expect(prompt).toContain('"series": [{"label":"上学期","data":[72,85,63]}')
+    expect(prompt).toContain('"categories":["语文","数学","英语"]')
+  })
+
+  it('leaves the output schema untouched when adding the kind', () => {
+    const [definition] = capture()
+    const schema = (definition as unknown as {
+      output: { schema: { properties: Record<string, unknown> } }
+    }).output.schema
+    expect(Object.keys(schema.properties).sort()).toEqual(['card', 'preview', 'ref', 'selfCheck', 'summary'])
+  })
+})
+
 describe('the browser contract', () => {
   it('publishes the admitted spec as presentation metadata', () => {
     const [definition] = capture()

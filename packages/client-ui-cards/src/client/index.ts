@@ -21,9 +21,10 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 // Type-only: pulls the uiConversation service merge (ctx.uiConversation).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
-import { DRAW_KIND, FIGURE_KIND, FLOWCHART_KIND } from '@aisketch/cards-core'
+import { CHART_KIND, DRAW_KIND, FIGURE_KIND, FLOWCHART_KIND } from '@aisketch/cards-core'
 import { FenceCard } from './FenceCard.tsx'
 import { cardRefDefinition } from './card-refs.ts'
+import { ChartCard } from './ChartCard.tsx'
 import { DrawCard } from './DrawCard.tsx'
 import { FigureCard } from './FigureCard.tsx'
 import { FlowchartCard } from './FlowchartCard.tsx'
@@ -55,6 +56,10 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(
     () => registerCardRenderer(FIGURE_KIND, { id: CARD_RENDERER_ID, trust: 'native', component: FigureCard }),
     'client-ui-cards: figure renderer',
+  )
+  ctx.effect(
+    () => registerCardRenderer(CHART_KIND, { id: CARD_RENDERER_ID, trust: 'native', component: ChartCard }),
+    'client-ui-cards: chart renderer',
   )
   // State-only Definition: index persisted show_card calls so a fence can carry
   // just {"ref":...} instead of a second copy of the spec. It publishes no node.
