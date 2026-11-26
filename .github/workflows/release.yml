@@ -3,7 +3,7 @@ name: Fork Release
 on:
   push:
     tags:
-      - 'v*.*.*[+]fork.*'
+      - 'v*.*.*fork.*'
   workflow_dispatch:
     inputs:
       tag:
@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   release:
+    if: contains(github.event.inputs.tag || github.ref_name, '+fork.')
     runs-on: ubuntu-latest
     steps:
       - name: 检出标签对应提交
