@@ -3,11 +3,12 @@ name: Fork Release
 on:
   push:
     tags:
-      - 'v*.*.*fork.*'
+      - 'v*upstream.*'
+      - 'v*fork.*'
   workflow_dispatch:
     inputs:
       tag:
-        description: '要发布的 fork 标签，如 v0.3.0+fork.1'
+        description: '要发布的 fork 标签，如 v0.1.0+upstream.0.3.0'
         required: true
 
 permissions:
@@ -15,7 +16,9 @@ permissions:
 
 jobs:
   release:
-    if: contains(github.event.inputs.tag || github.ref_name, '+fork.')
+    if: >-
+      contains(github.event.inputs.tag || github.ref_name, '+upstream.') ||
+      contains(github.event.inputs.tag || github.ref_name, '+fork.')
     runs-on: ubuntu-latest
     steps:
       - name: 检出标签对应提交
@@ -24,18 +27,19 @@ jobs:
           ref: ${{ github.event.inputs.tag || github.ref_name }}
 
       - name: 从 FORK_CHANGELOG 提取本版本说明
-        id: notes
         env:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         shell: bash
         run: |
-          awk -v tag="$TAG" '
-            index($0, "## " tag) == 1 { found=1; next }
+          version="${TAG#v}"
+          awk -v version="$version" '
+            index($0, "## [" version "]") == 1 { found=1; next }
             found && /^## / { exit }
+            found && /^\[.*\]: / { exit }
             found { print }
           ' docs/FORK_CHANGELOG.md > release-notes.md
           if [ ! -s release-notes.md ]; then
-            echo "::error::docs/FORK_CHANGELOG.md 中没有 $TAG 对应的章节"
+            echo "::error::docs/FORK_CHANGELOG.md 中没有 [$version] 对应的章节，请先补 changelog 再打 tag"
             exit 1
           fi
 
