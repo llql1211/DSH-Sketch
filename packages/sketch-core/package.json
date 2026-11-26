@@ -1,6 +1,6 @@
 {
   "name": "@aisketch/sketch-core",
-  "version": "0.3.0+fork.1",
+  "version": "0.4.0+upstream.0.3.0",
   "description": "AISketch core: dependency-free expression parser, closed-interpreter evaluator, numerical methods, spec compaction, and geometry resolution",
   "type": "module",
   "license": "MIT",

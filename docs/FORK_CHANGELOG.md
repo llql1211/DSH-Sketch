@@ -22,7 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ## [未发布]
 
-说明：新版本将命名为 0.1.0+upstream.0.3.0
+## [0.4.0+upstream.0.3.0] - 2026-11-26
+
+编号方案切换：自本版起采用 `A.B.C+upstream.X.Y.Z`，`A.B.C` 为本 fork 独立版本（从 0.4.0 起，高于旧基线 0.3.0，避免构建元数据不参与比较导致的版本倒挂），`+upstream.0.3.0` 记录上游基线（构建元数据，不参与版本优先级比较）。旧 tag `v0.3.0+fork.1` 保留原样，不改写、不重命名。
+
+基线：上游 **v0.3.0**（commit `370936c`）。
 
 ### Added
 
@@ -72,5 +76,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 - 图表与卡片文字适配 DSH 主题：配色随明暗自适应、修正暗色文字发黑与字体回退到宋体
 - 说明预览文字方块是宿主无字体栅格化下的占位符，发布卡片渲染真实字形
 
-[未发布]: <https://github.com/llql1211/DSH-Sketch/compare/v0.3.0+fork.1...HEAD>
+[未发布]: <https://github.com/llql1211/DSH-Sketch/compare/v0.4.0+upstream.0.3.0...HEAD>
+[0.4.0+upstream.0.3.0]: <https://github.com/llql1211/DSH-Sketch/compare/v0.3.0+fork.1...v0.4.0+upstream.0.3.0>
 [0.3.0+fork.1]: <https://github.com/llql1211/DSH-Sketch/compare/v0.3.0...v0.3.0+fork.1>

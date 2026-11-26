@@ -1,6 +1,6 @@
 {
   "name": "@aisketch/client-ui-cards",
-  "version": "0.3.0+fork.1",
+  "version": "0.4.0+upstream.0.3.0",
   "description": "Generic in-conversation card renderer: one chat node kind keyed by CardSpec.kind, dispatched through a client-side renderer registry",
   "type": "module",
   "license": "MIT",

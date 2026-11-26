@@ -1,6 +1,6 @@
 {
   "name": "@aisketch/cards-tool",
-  "version": "0.3.0+fork.1",
+  "version": "0.4.0+upstream.0.3.0",
   "description": "Model-facing show_card tool: emits a versioned declarative CardSpec the conversation renders natively, instead of generated HTML",
   "type": "module",
   "license": "MIT",

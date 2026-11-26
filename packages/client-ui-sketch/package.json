@@ -1,6 +1,6 @@
 {
   "name": "@aisketch/client-ui-sketch",
-  "version": "0.3.0+fork.1",
+  "version": "0.4.0+upstream.0.3.0",
   "description": "AISketch browser card: renders the sketch_function tool view as a live Canvas plot",
   "type": "module",
   "license": "MIT",
