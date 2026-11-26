@@ -42,6 +42,7 @@ import { compileCurves, freezeWindow, initialValues, stepOf, withValues } from '
 import type { ParamValues } from './params.ts'
 import { formatReadout, pickReadout } from './readout.ts'
 import type { ReadoutCurve } from './readout.ts'
+import { copyCanvasAsPng, pngFilename, saveCanvasAsPng } from './save-png.ts'
 
 // The browser half is served as one prebuilt bundle with no CSS-modules
 // pipeline, so the sheet is injected once instead of imported.
@@ -222,6 +223,8 @@ function SketchPlot({ spec, t, width, height, onExpand, onClose }: SketchPlotPro
   const [playing, setPlaying] = useState(false)
   const [cursor, setCursor] = useState<{ px: number; py: number } | null>(null)
   const [pinned, setPinned] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const copiedTimer = useRef<number | null>(null)
 
   const mode = useMemo(() => normalizeMode(spec.mode), [spec.mode])
   const params = Object.entries(spec.params ?? {})
@@ -234,6 +237,23 @@ function SketchPlot({ spec, t, width, height, onExpand, onClose }: SketchPlotPro
     setCursor(null)
     setValues(initialValues(spec))
   }, [spec])
+
+  // Cancel a pending "copied" reset so a timer never writes into a gone card.
+  useEffect(() => () => {
+    if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
+  }, [])
+
+  /** Copy the current picture to the clipboard from the card's button. */
+  const copy = useCallback(() => {
+    const element = canvas.current
+    if (element === null) return
+    void copyCanvasAsPng(element).then((ok) => {
+      if (!ok) return
+      setCopied(true)
+      if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 1600)
+    })
+  }, [])
 
   // The held y-window covers every corner of the parameter box, so dragging any
   // slider changes the curve and never the axes.
@@ -340,6 +360,27 @@ function SketchPlot({ spec, t, width, height, onExpand, onClose }: SketchPlotPro
               {playing ? t('card.pause') : t('card.animate')}
             </button>
           )}
+          <button
+            type="button"
+            className={CLS.action}
+            aria-label={t('card.copyHint')}
+            title={t('card.copyHint')}
+            onClick={copy}
+          >
+            ⧉ {copied ? t('card.copied') : t('card.copy')}
+          </button>
+          <button
+            type="button"
+            className={CLS.action}
+            aria-label={t('card.saveHint')}
+            title={t('card.saveHint')}
+            onClick={() => {
+              const element = canvas.current
+              if (element !== null) saveCanvasAsPng(element, pngFilename(spec.expr))
+            }}
+          >
+            ⇩ {t('card.save')}
+          </button>
           {onExpand === undefined ? null : (
             <button
               type="button"

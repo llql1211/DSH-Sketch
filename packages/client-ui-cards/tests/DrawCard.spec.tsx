@@ -49,6 +49,15 @@ describe('DrawCard', () => {
     expect(html).toContain('cd-expand')
   })
 
+  it('caps and centres the artwork instead of putting it in a scroll box', () => {
+    const html = renderToStaticMarkup(<DrawCard card={card} t={t} />)
+    expect(html).toContain('cd-art')
+    expect(html).toContain('--cd-art-w:640px')
+    expect(html).toContain('--cd-art-ratio:1.6')
+    expect(html).toContain('data-card-export')
+    expect(html).not.toContain('cd-draw-placeholder')
+  })
+
   it('paints a payload background under the paper rules and the ink', () => {
     const night: CardSpec = {
       version: 1,

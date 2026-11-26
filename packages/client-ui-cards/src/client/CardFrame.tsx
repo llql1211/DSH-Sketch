@@ -10,13 +10,20 @@
  * A table that used to need its own 320px scroll box is exactly the case this
  * exists for: in the overlay the same table gets the whole viewport, and the
  * scroll container's height cap is lifted.
+ *
+ * The frame also owns the PNG export control. Because it wraps the body rather
+ * than living inside each kind, the button needs no per-card wiring: it
+ * photographs the mounted body, which is already the exact picture the reader
+ * sees. The inline copy and the overlay copy each keep their own ref, so the
+ * button always exports the surface clicked.
  */
 
-import { useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
 import type { NS } from './locales.ts'
+import { copyElementAsPng, pngFilename, saveElementAsPng } from './save-png.ts'
 import { CLS } from './styles.ts'
 
 /** What the frame needs to draw the head and manage the overlay. */
@@ -40,6 +47,10 @@ export interface CardFrameProps {
  */
 export function CardFrame({ kind, title, summary, t, children }: CardFrameProps) {
   const [expanded, setExpanded] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const copiedTimer = useRef<number | null>(null)
+  const inlineBody = useRef<HTMLDivElement | null>(null)
+  const overlayBody = useRef<HTMLDivElement | null>(null)
 
   // Escape closes the overlay, matching every other modal surface in the shell.
   useEffect(() => {
@@ -51,11 +62,61 @@ export function CardFrame({ kind, title, summary, t, children }: CardFrameProps)
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [expanded])
 
-  const head = (close: (() => void) | null) => (
+  // Cancel a pending "copied" reset so a timer never writes into a gone card.
+  useEffect(() => () => {
+    if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
+  }, [])
+
+  /** Photograph one body and offer it as a PNG download. */
+  const save = (body: RefObject<HTMLDivElement>): void => {
+    const node = body.current
+    if (node === null) return
+    // A failed rasterization must never take the card down; the picture on
+    // screen is untouched either way.
+    void saveElementAsPng(node, pngFilename(title, kind)).catch(() => {})
+  }
+
+  /** Photograph one body and put its PNG on the clipboard. */
+  const copy = (body: RefObject<HTMLDivElement>): void => {
+    const node = body.current
+    if (node === null) return
+    void copyElementAsPng(node).then((ok) => {
+      if (!ok) return
+      setCopied(true)
+      if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current)
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 1600)
+    })
+  }
+
+  const body = (target: RefObject<HTMLDivElement>) => (
+    <div ref={target} className={CLS.saveBody}>
+      {children}
+    </div>
+  )
+
+  const head = (close: (() => void) | null, target: RefObject<HTMLDivElement>) => (
     <div className={CLS.head}>
       <span className={CLS.title}>{title}</span>
       <span className={CLS.kind}>{kind}</span>
       {summary === null ? null : <span className={CLS.summary}>{summary}</span>}
+      <button
+        type="button"
+        className={CLS.save}
+        aria-label={t('card.copyHint')}
+        title={t('card.copyHint')}
+        onClick={() => copy(target)}
+      >
+        ⧉ {copied ? t('card.copied') : t('card.copy')}
+      </button>
+      <button
+        type="button"
+        className={CLS.save}
+        aria-label={t('card.saveHint')}
+        title={t('card.saveHint')}
+        onClick={() => save(target)}
+      >
+        ⇩ {t('card.save')}
+      </button>
       {close === null
         ? (
           <button
@@ -84,8 +145,8 @@ export function CardFrame({ kind, title, summary, t, children }: CardFrameProps)
 
   return (
     <div className={CLS.card} data-card-kind={kind}>
-      {head(null)}
-      {children}
+      {head(null, inlineBody)}
+      {body(inlineBody)}
       {expanded && typeof document !== 'undefined'
         ? createPortal(
           <div className={CLS.overlay} onClick={() => setExpanded(false)}>
@@ -96,8 +157,8 @@ export function CardFrame({ kind, title, summary, t, children }: CardFrameProps)
               aria-label={title}
               onClick={(event) => event.stopPropagation()}
             >
-              {head(() => setExpanded(false))}
-              {children}
+              {head(() => setExpanded(false), overlayBody)}
+              {body(overlayBody)}
             </div>
           </div>,
           document.body,

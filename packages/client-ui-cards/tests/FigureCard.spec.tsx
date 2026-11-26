@@ -63,6 +63,14 @@ describe('FigureCard', () => {
     expect(html).not.toContain('cd-draw-svg')
   })
 
+  it('gives the figure the same sized, centred illustration seat as a draw card', () => {
+    const html = renderToStaticMarkup(<FigureCard card={incline} t={t} />)
+    expect(html).toContain('cd-art')
+    expect(html).toContain('--cd-art-w:960px')
+    expect(html).toContain('--cd-art-ratio:1.5')
+    expect(html).toContain('data-card-export')
+  })
+
   it('renders an atom with nucleus charge, shell legend and electron counts', () => {
     const html = renderToStaticMarkup(<FigureCard card={atom} t={t} />)
     expect(html).toContain('data-card-kind="figure"')

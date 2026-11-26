@@ -10,24 +10,26 @@
  * purpose: theme ink arrives as `var(--dsw-alias-*)`, which browsers do not
  * resolve inside a presentation attribute, while inline CSS does.
  *
- * The picture is rasterized once and shown as a canvas. A drawn card is
+ * The picture is rasterized once and shown as an image. A drawn card is
  * hundreds of paths, some with filters and gradients; leaving that as live SVG
  * makes every scroll past it and every expand pay a cold rasterization. The SVG
- * is mounted hidden, photographed, and dropped -- the canvas is what the page
- * ever paints.
+ * is mounted hidden, photographed, and dropped -- an `<img>` of that bitmap is
+ * what the page ever paints, so the browser's right-click menu offers "Copy
+ * image" without a detour through Save.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { parseDrawPayload, resolveDrawColor } from '@aisketch/cards-core'
 import type { DrawElement, DrawPaper, DrawTapeElement, DrawTextElement } from '@aisketch/cards-core'
+import { pngDataUrl } from './copyable-image.ts'
 import { renderPathElement, renderShapeElement, pixelParts, rngFor, tapePath } from './draw-engine.ts'
 import type { InkGradient, InkPart } from './draw-engine.ts'
 import { CardFrame } from './CardFrame.tsx'
 import { RawCard } from './RawCard.tsx'
 import type { CardRendererProps } from './registry.ts'
 import { cachedSnapshot, snapshotFor, storeSnapshot } from './snapshot.ts'
-import { CLS } from './styles.ts'
+import { CLS, artVars } from './styles.ts'
 
 /**
  * Font stacks are inlined on text elements, not left to a class.
@@ -283,21 +285,50 @@ function useThemeSignature(): string {
   return signature
 }
 
-/** Copy a cached bitmap into this instance's own canvas. */
-function SnapshotCanvas({ source, label }: { source: HTMLCanvasElement; label: string }) {
+/**
+ * Paste one cached bitmap into this instance's picture seat.
+ *
+ * An `<img>` with a PNG data URL is the visible surface: unlike a canvas, it
+ * has a source, so the native context menu's "Copy image" works, and the Save
+ * control downloads the identical bytes. A bitmap that cannot be encoded (a
+ * tainted canvas in a hostile embed) still falls back to a painted canvas, so
+ * the picture never disappears over a clipboard affordance.
+ */
+function SnapshotImage({ source, label, w, h }: {
+  source: HTMLCanvasElement
+  label: string
+  w: number
+  h: number
+}) {
+  const src = useMemo(() => pngDataUrl(source), [source])
   const ref = useRef<HTMLCanvasElement | null>(null)
   useEffect(() => {
+    if (src !== null) return
     const canvas = ref.current
     if (canvas === null) return
     const context = canvas.getContext('2d')
     if (context === null) return
     context.clearRect(0, 0, canvas.width, canvas.height)
     context.drawImage(source, 0, 0)
-  }, [source])
+  }, [src, source])
+  if (src !== null) {
+    return (
+      <img
+        className={`${CLS.drawCanvas} ${CLS.art}`}
+        style={artVars(w, h)}
+        src={src}
+        alt={label}
+        width={source.width}
+        height={source.height}
+        draggable
+      />
+    )
+  }
   return (
     <canvas
       ref={ref}
-      className={CLS.drawCanvas}
+      className={`${CLS.drawCanvas} ${CLS.art}`}
+      style={artVars(w, h)}
       width={source.width}
       height={source.height}
       role="img"
@@ -361,14 +392,14 @@ export function DrawCard({ card, t }: CardRendererProps) {
   const artwork = (hidden: boolean) => (
     <svg
       ref={setSvgNode}
-      className={CLS.drawSvg}
+      className={`${CLS.drawSvg} ${CLS.art}`}
       width={draw.size.w}
       height={draw.size.h}
       viewBox={`0 0 ${draw.size.w} ${draw.size.h}`}
       role={hidden ? undefined : 'img'}
       aria-hidden={hidden ? true : undefined}
       aria-label={hidden ? undefined : summary}
-      style={hidden ? { display: 'none' } : undefined}
+      style={hidden ? { display: 'none', ...artVars(draw.size.w, draw.size.h) } : artVars(draw.size.w, draw.size.h)}
     >
       <PaperDefs paper={draw.paper} />
       {draw.background === undefined
@@ -404,15 +435,27 @@ export function DrawCard({ card, t }: CardRendererProps) {
       summary={summary}
       t={t}
     >
-      <div className={CLS.drawScroll}>
+      <div className={CLS.drawScroll} data-card-export="">
         {snapshot !== null
-          ? <SnapshotCanvas source={snapshot} label={summary} />
+          ? <SnapshotImage source={snapshot} label={summary} w={draw.size.w} h={draw.size.h} />
           : failed
             ? artwork(false)
             : (
               <>
                 {artwork(true)}
-                <div className={CLS.drawPlaceholder} style={{ aspectRatio: `${draw.size.w} / ${draw.size.h}` }} />
+                {/*
+                 * An empty SVG with the same geometry and classes as the final
+                 * picture reserves the exact seat; a CSS `aspect-ratio` div
+                 * could not account for the height cap and would jump on swap.
+                 */}
+                <svg
+                  className={`${CLS.drawSvg} ${CLS.art}`}
+                  width={draw.size.w}
+                  height={draw.size.h}
+                  viewBox={`0 0 ${draw.size.w} ${draw.size.h}`}
+                  aria-hidden="true"
+                  style={{ visibility: 'hidden', ...artVars(draw.size.w, draw.size.h) }}
+                />
               </>
             )}
       </div>
